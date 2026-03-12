@@ -36,6 +36,10 @@ class IDSEnvironment:
         self._true_label  = None
         self._done        = False
 
+        # Current batch state (vectorized)
+        self._batch_states = None
+        self._batch_labels = None
+
     # ------------------------------------------------------------------
     # Gym-like API
     # ------------------------------------------------------------------
@@ -81,6 +85,27 @@ class IDSEnvironment:
             "action":     action,
         }
         return self._state.copy(), reward, self._done, info
+
+    def reset_batch(self, states: torch.Tensor, true_labels: torch.Tensor):
+        """Vectorized reset for batch processing."""
+        self._batch_states = states.clone()
+        self._batch_labels = true_labels.clone()
+        return self._batch_states
+
+    def step_batch(self, actions: torch.Tensor):
+        """Vectorized step for batch processing directly on GPU."""
+        correct = (actions == self._batch_labels)
+        
+        base_rewards = torch.full_like(actions, self.INCORRECT_REWARD, dtype=torch.float32)
+        base_rewards[correct] = self.CORRECT_REWARD
+        
+        if self.rarity_reward is not None:
+            rewards = self.rarity_reward.compute_batch(base_rewards, self._batch_labels)
+        else:
+            rewards = base_rewards
+            
+        dones = torch.ones_like(rewards, dtype=torch.float32)
+        return self._batch_states.clone(), rewards, dones, {}
 
     # ------------------------------------------------------------------
     # Continual learning: expand action space

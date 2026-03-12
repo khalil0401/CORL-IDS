@@ -220,7 +220,7 @@ def train(cfg):
     
     # Pre-compute inverse probability weights for balanced replay sampling
     # allowing SAC to see rare classes frequently without dataset mutation
-    class_weights = np.zeros(num_classes, dtype=np.float32)
+    class_weights = torch.zeros(num_classes, dtype=torch.float32, device=device)
     for c, prob in class_probs_vis.items():
         class_weights[c] = 1.0 / max(prob, 1e-8)
     class_weights /= class_weights.sum()
@@ -239,7 +239,7 @@ def train(cfg):
     )
     alpha_min = cfg.get("alpha_min", 0.01)  # FIX 3: floor
 
-    replay = ReplayBuffer(cfg["buffer_capacity"], cfg["latent_dim"])
+    replay = ReplayBuffer(cfg["buffer_capacity"], cfg["latent_dim"], device=cfg["device"])
 
     # -- 5. Training loop ------------------------------------------------
     logs = {"critic_loss": [], "actor_loss": [], "reward": [], "alpha": []}
@@ -273,45 +273,33 @@ def train(cfg):
             (cfg.get("lambda_contrast", 0.5) * c_loss).backward()
             enc_optim.step()
 
-            z_batch = z_batch_t.detach().cpu().numpy()
+            # b) Vectorized Step through environment directly on GPU
+            z_batch_t_detached = z_batch_t.detach()
             encoder.eval()
 
-            # b) Step through environment for each sample
-            batch_rewards    = []
-            batch_states     = []
-            batch_actions    = []
-            batch_next_states = []
+            states_t = env.reset_batch(z_batch_t_detached, yb_t)
+            actions_t, _probs_t = sac.select_action_batch(states_t, deterministic=False)
+            next_states_t, rewards_t, dones_t, _info = env.step_batch(actions_t)
 
-            for z, true_lbl in zip(z_batch, yb):
-                state = env.reset(z, int(true_lbl))
-                action, _probs = sac.select_action(state, deterministic=False)
-                next_state, reward, done, _ = env.step(action)
-
-                batch_rewards.append(reward)
-                batch_states.append(state)
-                batch_actions.append(action)
-                batch_next_states.append(next_state)
-
-            # c) Push to replay buffer
-            dones = np.ones(len(batch_rewards), dtype=np.float32)
+            # c) Push to vectorized replay buffer directly from GPU
             replay.push_batch(
-                np.array(batch_states),
-                np.array(batch_actions),
-                np.array(batch_rewards, dtype=np.float32),
-                np.array(batch_next_states),
-                dones,
-                true_labels=np.array(yb, dtype=np.int64),
+                states_t,
+                actions_t,
+                rewards_t,
+                next_states_t,
+                dones_t,
+                true_labels=yb_t,
             )
 
             # d) SAC update + continuous exploration guarantee
             if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                states_t, acts_t, rews_t, next_t, dones_t = replay.sample(cfg["batch_size"], class_weights=class_weights)
+                states_s, acts_s, rews_s, next_s, dones_s = replay.sample(cfg["batch_size"], class_weights=class_weights)
                 info = sac.update(
-                    to_tensor(states_t, device),
-                    to_tensor(acts_t,   device, torch.int64),
-                    to_tensor(rews_t,   device),
-                    to_tensor(next_t,   device),
-                    to_tensor(dones_t,  device),
+                    states_s,
+                    acts_s,
+                    rews_s,
+                    next_s,
+                    dones_s,
                 )
                 # Clamp log_alpha so policy keeps some exploration
                 if hasattr(sac, "log_alpha"):
@@ -321,7 +309,7 @@ def train(cfg):
                 logs["actor_loss"].append(info["actor_loss"])
                 logs["alpha"].append(info["alpha"])
 
-            epoch_rewards.extend(batch_rewards)
+            epoch_rewards.extend(rewards_t.cpu().tolist())
             total_steps += 1
 
         # -- Epoch summary -----------------------------------------------

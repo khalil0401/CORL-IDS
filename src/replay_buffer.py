@@ -9,6 +9,7 @@ Supports random mini-batch sampling.
 """
 
 import numpy as np
+import torch
 from typing import Tuple
 
 
@@ -22,16 +23,17 @@ class ReplayBuffer:
     state_dim  : int   dimensionality of state vector
     """
 
-    def __init__(self, capacity: int = 100_000, state_dim: int = 32):
+    def __init__(self, capacity: int = 100_000, state_dim: int = 32, device: str = "cpu"):
         self.capacity  = capacity
         self.state_dim = state_dim
+        self.device    = torch.device(device)
 
-        self._states      = np.zeros((capacity, state_dim), dtype=np.float32)
-        self._actions     = np.zeros((capacity,),           dtype=np.int64)
-        self._rewards     = np.zeros((capacity,),           dtype=np.float32)
-        self._next_states = np.zeros((capacity, state_dim), dtype=np.float32)
-        self._dones       = np.zeros((capacity,),           dtype=np.float32)
-        self._true_labels = np.zeros((capacity,),           dtype=np.int64)
+        self._states      = torch.zeros((capacity, state_dim), dtype=torch.float32, device=self.device)
+        self._actions     = torch.zeros((capacity,),           dtype=torch.int64,   device=self.device)
+        self._rewards     = torch.zeros((capacity,),           dtype=torch.float32, device=self.device)
+        self._next_states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=self.device)
+        self._dones       = torch.zeros((capacity,),           dtype=torch.float32, device=self.device)
+        self._true_labels = torch.zeros((capacity,),           dtype=torch.int64,   device=self.device)
 
         self._ptr  = 0      # write pointer
         self._size = 0      # current fill level
@@ -56,16 +58,16 @@ class ReplayBuffer:
         self._ptr  += 1
         self._size  = min(self._size + 1, self.capacity)
 
-    def push_batch(self, states, actions, rewards, next_states, dones, true_labels=None):
+    def push_batch(self, states: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, next_states: torch.Tensor, dones: torch.Tensor, true_labels: torch.Tensor=None):
         """Push a batch of transitions at once (vectorized)."""
         B = len(states)
-        idxs = np.arange(self._ptr, self._ptr + B) % self.capacity
+        idxs = torch.arange(self._ptr, self._ptr + B, device=self.device) % self.capacity
 
         self._states[idxs]      = states
         self._actions[idxs]     = actions
         self._rewards[idxs]     = rewards
         self._next_states[idxs] = next_states
-        self._dones[idxs]       = dones.astype(np.float32)
+        self._dones[idxs]       = dones.to(torch.float32)
         if true_labels is not None:
             self._true_labels[idxs] = true_labels
 
@@ -74,14 +76,9 @@ class ReplayBuffer:
 
     # ------------------------------------------------------------------
 
-    def sample(self, batch_size: int, class_weights: np.ndarray = None) -> Tuple[np.ndarray, ...]:
+    def sample(self, batch_size: int, class_weights: torch.Tensor = None) -> Tuple[torch.Tensor, ...]:
         """
-        Sample a random mini-batch. 
-        If class_weights is provided, performs balanced sampling based on true_labels.
-
-        Returns
-        -------
-        states, actions, rewards, next_states, dones  — all np.ndarray
+        Sample a random mini-batch vectorized across device.
         """
         if self._size < batch_size:
             raise RuntimeError(
@@ -91,10 +88,10 @@ class ReplayBuffer:
         if class_weights is not None and hasattr(self, '_true_labels'):
             valid_labels = self._true_labels[:self._size]
             p = class_weights[valid_labels]
-            p = p / p.sum()
-            idx = np.random.choice(self._size, size=batch_size, replace=False, p=p)
+            # multinomial expects float probabilities and scales them automatically
+            idx = torch.multinomial(p.to(torch.float32), batch_size, replacement=False)
         else:
-            idx = np.random.choice(self._size, size=batch_size, replace=False)
+            idx = torch.randperm(self._size, device=self.device)[:batch_size]
             
         return (
             self._states[idx],

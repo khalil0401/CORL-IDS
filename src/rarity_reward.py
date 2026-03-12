@@ -16,6 +16,7 @@ pay more attention to minority attack types.
 """
 
 import math
+import torch
 from typing import Dict
 
 
@@ -38,6 +39,14 @@ class RarityReward:
         for cls, prob in class_probs.items():
             prob = max(prob, 1e-8)   # numerical safety
             self._bonus_cache[cls] = math.log(1.0 + 1.0 / prob)
+            
+        self._setup_bonus_tensor()
+
+    def _setup_bonus_tensor(self):
+        max_cls = max(self._bonus_cache.keys()) if self._bonus_cache else 0
+        self._bonus_tensor = torch.full((max_cls + 1,), math.log(2.0), dtype=torch.float32)
+        for cls, bonus in self._bonus_cache.items():
+            self._bonus_tensor[cls] = bonus
 
     def compute(self, base_reward: float, true_label: int) -> float:
         """
@@ -58,9 +67,16 @@ class RarityReward:
         # Mistakes on rare classes will issue larger negative penalties.
         return base_reward * (1.0 + self.lambda_ * bonus)
 
+    def compute_batch(self, base_rewards: torch.Tensor, true_labels: torch.Tensor) -> torch.Tensor:
+        """Apply rarity scaling vectorized across a batch."""
+        self._bonus_tensor = self._bonus_tensor.to(base_rewards.device)
+        bonuses = self._bonus_tensor[true_labels]
+        return base_rewards * (1.0 + self.lambda_ * bonuses)
+
     def update_class_probs(self, new_probs: Dict[int, float]):
         """Refresh probabilities when new classes are discovered."""
         for cls, prob in new_probs.items():
             prob = max(prob, 1e-8)
             self.class_probs[cls] = prob
             self._bonus_cache[cls] = math.log(1.0 + 1.0 / prob)
+        self._setup_bonus_tensor()

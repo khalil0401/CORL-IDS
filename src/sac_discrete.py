@@ -219,6 +219,23 @@ class DiscreteSAC:
             action = torch.distributions.Categorical(probs).sample().item()
         return action, probs.squeeze(0).cpu().numpy()
 
+    @torch.no_grad()
+    def select_action_batch(self, states: torch.Tensor, deterministic: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Select actions for a batch of state tensors directly on GPU.
+
+        Returns
+        -------
+        actions : torch.Tensor (batch,)
+        probs   : torch.Tensor (batch, num_actions)
+        """
+        probs = self.actor(states)                             
+        if deterministic:
+            actions = probs.argmax(dim=-1)
+        else:
+            actions = torch.distributions.Categorical(probs).sample()
+        return actions, probs
+
     # ------------------------------------------------------------------
     # SAC update
     # ------------------------------------------------------------------
