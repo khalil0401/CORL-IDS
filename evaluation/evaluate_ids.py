@@ -118,7 +118,7 @@ def run_inference(encoder, sac, X_seq, y_seq, device, batch_size=512):
 # =======================================================================
 
 def evaluate(ckpt_path, device_str="cpu",
-             dbscan_eps=1.5, dbscan_min_samples=30,
+             dbscan_eps=1.2, dbscan_min_samples=30,
              min_cluster_size=50, beta_entropy=1.0,
              proto_margin=2.0):
 
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="CORL-IDS Evaluation + Discovery")
     p.add_argument("--model",             type=str,   default=os.path.join(MODEL_DIR, "trained_model.pt"))
     p.add_argument("--device",            type=str,   default="cuda" if torch.cuda.is_available() else "cpu")
-    p.add_argument("--dbscan-eps",        type=float, default=1.5)
+    p.add_argument("--dbscan-eps",        type=float, default=1.2)
     p.add_argument("--dbscan-min-samples",type=int,   default=30)
     p.add_argument("--min-cluster-size",  type=int,   default=50)
     p.add_argument("--beta-entropy",      type=float, default=1.0)
