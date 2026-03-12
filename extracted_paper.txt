@@ -1,0 +1,640 @@
+
+--- Page 1 ---
+Security and Privacy in LLMs
+Khalil Bencheikha, Aymen Dia Eddine Berinia,∗
+aDepartment of Computer Science, CSAAI-Lab Laboratory, Ziane Achour University, , Djelfa, 17000, Algeria
+ARTICLE INFO
+Keywords:
+quadrupole exciton
+polaritonABSTRACT
+This template helps you to create a properly formatted L ATEX manuscript.
+\beginabstract...\endabstractand\begin{keyword} ... \end{keyword}whichcontaintheabstractand
+keywords respectively.
+Each keyword shall be separated by a\sepcommand.
+1. Introduction
+2. Related works
+2.1. Deep Learning-based IoT Intrusion Detection
+Phalaagae, Zungeru, Yahya, Sigweni, and Rajalakshmi
+(2025) proposed hybrid deep learning model combining
+CNNandbidirectionalLSTMwithanattentionmechanism,
+used Particle Swarm Optimization (PSO) for dynamic fea-
+ture selection and and convolutional layers, two layers (128
+and64filters)toextractspatialfeatures,Max-poolingtore-
+ducedimensionality,andtwobidirectionalLSTMswithtwo
+layers (64 and 32 units) to capture temporal dependencies.
+The attention mechanism is applied to LSTM hidden states
+tocomputealignmentscoresandweights,focusingoncriti-
+cal time steps. Datasets: IoTID20 (primary), CICIoT2023,
+and Edge-IIoTset (for generalization). Metrics: Accuracy,
+Precision, Recall, F1-Score, Confusion Matrix, Training
+Loss.Performance(IoTID20):Accuracy:98.88%,F1-Score:
+99.36%, Precision: 99.91% ,Recall: 98.82%. Limitations:
+Although effective, deployment in real-time distributed IoT
+environments may still face scalability/complexity chal-
+lenges. Slight reduction in performance on highly imbal-
+anced/complex datasets (CICIoT2023). Future Work: Ex-
+ploretransformerarchitectures;implementreal-timethresh-
+old optimization; test other metaheuristics like Genetic
+Algorithms (GA) or Ant Colony Optimization (ACO).
+Fares, Ibrahim, Elaziz, Shrahili, Elmahallawy, Sohaib,
+Shawky, and Shah (2025) proposed Hybrid Swin Trans-
+former + LSTM with Transfer Learning. in the input trans-
+formation layer, it converts 1D traffic data into a format
+suitable for Swin (Patch Partition) , Swin Transformer
+layer extracts hierarchical, local, and global features using
+shifted windows, and LSTM Layers process the feature
+sequence from Swin to capture long-term temporal depen-
+dencies. in Transfer Learning Strategy: Pre-training: Train
+on source dataset (NSL-KDD). Transfer: Move weights to
+target model. Fine-tuning: retrain on target IoT datasets
+(ToN-IoT, BoTIoT, etc.) with reduced parameters (frozen
+layers). Metrics: Accuracy, Precision, Recall, F1-Score,
+DetectionRate(DR),FalsePositiveRate(FPR),Processing
+Time.
+∗Corresponding author
+khalil.bencheikh@univ-djelfa.dz(K. Bencheikh);
+berini.aymen@gmail.com(A.D.E. Berini)
+ORCID(s):Overall Performance: Average Accuracy 98.97%, F1
+98.97%. CICIoT2023: 98.78% Binary Accuracy, 97.44%
+Multiclass. ToN-IoT: 99.97% Binary Accuracy. Training
+Time: Transfer learning reduced training time significantly
+(e.g., 950s for CICIoT2023 vs 2072s for autoencoders).
+Detection Rate: 99.14% on CICIoT2023 (Highest among
+compared models).
+Limitations: High computational complexity of Trans-
+formers (mitigated by TL but still non-negligible). Depen-
+dency on the quality of the source dataset (NSL-KDD) for
+initial feature learning. Future Work: Improve interpretabil-
+ity; Enhance scalability
+Racherla, Sripathi, Faruqui, Kabir, Whaiduzzaman, and
+Shah (2024) developed Deep-IDS , a lightwieght LSTM
+basd (input equential network traffic data, hidden layer with
+64 LSTM units and memory cells/gates to capture temporal
+dynamics) and output softmax classification into 6 classes
+(Benign + 5 Attacks(Denial of Service (DoS), Distributed
+DenialofService(DDoS),BruteForce(BRF),Man-in-the-
+Middle (MITM), Replay Attacks (RP))) , Traffic blocking
+based on a probability threshold. Empirically set at 70%
+to optimize the detection rates and false alarms. they used
+CIC-IDS2017 dataset and Min-Max Normalization, One-
+Hot Encoding, Preprocessing Mutual Information Feature
+Selection Metrics : Accuracy:97.67%, Precision :97.67% ,
+Recall : 98.17%, F1-Score, FAR, Detection Rate :96.8% at
+the optimal 70% threshold, Response Time : 1.49 seconds
+on average (Real-time capable) .
+2.2. Autoencoder and Generative Intrusion
+Detection
+Wei, Yin, Tan, Ruan, Yin, Sun, and Luo (2024) devel-
+oped Dual-Classifier Hybrid Model (AHDM) , used Au-
+toencoder Feature Enhancement (AFE) for Feature Group-
+ing (Divides features into 4 subgroups based on statistical
+metrics (mean, std, skewness)) and Feature Encoding (4
+distinct Autoencoders encode these subgroups into lower-
+dimensional spaces (𝑘𝑔= 4 −𝑔) to highlight subtle differ-
+ences.).
+Classifier I (Raw Features : DNN trained on original
+features to detect normal traffic and large-sample attacks).
+Classifier II (Encoded Features : DNN trained on AFE-
+enhanced features specifically to detect small-sample at-
+tacks). Decision Fusion: Combines outputs from both clas-
+sifiers.
+Berini et al.:Preprint submitted to ElsevierPage 1 of 7
+--- Page 2 ---
+Short Title of the Article
+Metrics: Accuracy, Precision, Recall, F1-Score, False
+AlarmRate(FAR).Datasets:KDDCUP99,CIC-IDS-2017,
+IoT-23.
+KDD CUP 99: 99.76% Accuracy, 0.06% FAR.
+Yu, Zhai, Shen, Wu, Zhang, Yu, and Shen (2024) com-
+bined Deep Q-Networks (DQN) with Conditional Varia-
+tional Autoencoders (CVAE) , Known Traffic Classifier
+(DQN Module): Agent(DQN Agent), Values Network(A
+CVAE structure integrated into the Q-network) , Learns to
+classify known classes (Benign + Known Attacks).
+Unknown Attack Recognizer (Reconstruction Module):
+Takes latent features (𝑧) from the trained Recognition Net-
+work and predicted labels (𝑎∗) to reconstruct features ,
+Uses Reconstruction Error + Extreme Value Theory (EVT)
+threshold. High error→Unknown Attack.
+DoubleDeepQ-Network(DDQN):Usedfortheclassi-
+ficationtasktomitigateQ-valueoverestimation.Conditional
+Variational Autoencoder (CVAE): Integrated to learn latent
+distributions of known classes.
+Extreme Value Theory (EVT) : Models the tail of the
+reconstructionerrordistribution(GeneralizedParetoDistri-
+bution) to mathematically define the "unknown" threshold.
+Known (Training): DDoS, Password, XSS. Unknown
+(Testing):DoS,Injection,Scanning,MITM.(TON-IoTDataset).
+Unknown Detection : Recognized 82% of unknown attacks
+(which were otherwise misclassified as DDoS/Password by
+the classifier)
+ExplicitLimitations:Computationalcomplexitydepends
+on DQN training episodes/steps (𝑄(𝑚×𝑛)). Still some
+misclassification(18%ofunknownattacksnotrecognized).
+Future Work: Adapt to constantly emerging cyber attacks;
+new DRL algorithms for open-set.
+2.3. Reinforcement Learning-based Intrusion
+Detection
+Rookard and Khojandi (2023) applied Deep Q-Network
+(DQN) device-specific telemetry data (GPS, Modbus) from
+the TONIoT dataset, Environment: IoT Network Traffic
+(TON-IoTsamples).State:inputfeaturesfromIoTtelemetry
+(e.g., temperature, pressure, location). Agent: Deep Neural
+Network approximating the Q-function. Action: Classifica-
+tion decision (Attack vs Normal). Reward : Feedback based
+on correct/incorrect classification.
+Attacks Considered: Confidentiality: Scanning, Pass-
+word cracking, SQL Injection. Integrity: Backdoor, XSS.
+Availability : Ransomware, DDoS.
+Dataset: TON-IoT (Telemetry from GPS Tracker, Mod-
+bus, Weather Station).
+Metric:Accuracy,Precision,Recall,F1-Score,Geomet-
+ric Mean (G-Mean).
+Results: GPS Dataset: DQN Accuracy 79.69% (High-
+est). G-Mean 0.8854. Modbus Dataset : DQN Accuracy
+80.51%(SignificantlyoutperformedMLPat 69%andSVM
+at 68%). Weather Dataset: DQN Accuracy 87.82%(High-
+est). DQN consistently outperformed supervised learning
+baselines across all three device types.Future Work : Explore Actor-Critic methods; feature
+engineering; testing on additional RL algorithms.
+Ghubaish, Yang, and Jain (2024) proposed HDRL-IDS,
+utilizing a Deep Deterministic Policy Gradient (DDPG)
+agentforhybridhostnetworkintrusiondetectionin5Gmed-
+ical applications.
+NeedforaHybridIDS(combiningNIDSandHIDS)us-
+ingDRL(Actor-Critic)thatadaptsto5GMECenvironments
+withminimalhumaninteraction,validatedonarealistic5G
+testbed.
+Environment:5GMECTestbed(Simu5G+OMNet++).
+Agent:DDPG(DeepDeterministicPolicyGradient)Agent.
+State Space: Hybrid features combining Network meta-
+data (via Argus) and Host metadata (via Psutil). Action
+Space: Continuous control (mapped to classification). Re-
+ward Function: Feedback on detection accuracy.
+Testbed: Includes 5G Core, Local Network, 2 MECs, 3
+UEs, Insider Attacker.
+Algorithms Used: Deep Deterministic Policy Gradient
+(DDPG):Model-free,off-policyActor-Criticalgorithmsuit-
+able for continuous action spaces.
+ActorNetwork:4Layers(32GRU,48Dense,48Dense,
+1 Output).
+Critic Network : Evaluates the actor’s policy. Strategy:
+Epsilon-greedy for exploration.
+MITM : Data alteration between UE and MEC. DDoS
+: Flooding MECs. Ransomware: Encrypting files on UE.
+Buffer Overflow: Manipulating execution flow.
+Dataset: Novel self-generated 5G MEC dataset (145k
+samples:132knormal,13kattack).77features(35network,
+40host).Hybrid(HDRL):Outperformssingle-featuremod-
+elsinF1-score.Net-only:Highaccuracy(91.76%)butfailed
+to identify attacks (0% detection of minority class), leading
+to low F1 (10.48%). Host-only: Low accuracy (24.99%)
+andlowF1(4.45%).Hybrid:Accuracy58.17%,F125.42%.
+(Note: Results are initial and low in absolute terms, but
+Hybrid is relatively superior in balanced detection).
+Limitations: Initial results show relatively low absolute
+performance(F1 25%,Accuracy 58%).Predefinedparame-
+ters might not be optimal. Low number of training episodes
+(10) limited the model’s potential.
+Future Work: Increase training episodes; Feature reduc-
+tion methods; Deployment optimization.
+Jin,Fan,Han,andCui(2025)combinedSoftActorCritic
+(SAC) with an Improved Gravitational Search Algorithm
+(IGSA) for robust feature selection. Improved GSA uses
+fitness normalization with Adaptive Search Radius and a
+sigmoid-modulated gravitational constant to select optimal
+features. Intrusion Detection Module (SAC): Agent: SAC
+Agent (Actor-Critic). Input: Selected features from IGSA.
+Networks: Actor Network, V-Critic Network, Q-Critic Net-
+work (all 3-layer DNNs with 100 neurons each).
+Algorithms Used:
+Improved Gravitational Search Algorithm (IGSA):
+Fitness Normalization : Uses median/quartiles for ro-
+bustness against outliers (𝑚𝑖(𝑡)calculation).
+Berini et al.:Preprint submitted to ElsevierPage 2 of 7
+--- Page 3 ---
+Short Title of the Article
+Adaptive Search Radius: Dynamic adjustment (𝑅(𝑡)) to
+balance exploration/exploitation.
+Sigmoid Modulation: Modulates gravitational constant
+𝐺(𝑡)to prevent premature convergence.
+Soft Actor-Critic (SAC): Off-policy DRL maximizing
+expectedcumulativereward+entropy(randomness)topre-
+vent deterministic overfitting. Uses Twin Q-functions to
+mitigate overestimation bias.
+Attacks:DoS,Probe,R2L,U2R(NSL-KDD);Injection,
+Flooding (AWID).
+Datasets: NSL-KDD, AWID, CICIDS2017.
+Metrics: Accuracy, Precision, Recall, F1-Score, Train-
+ing/Inference Time.
+Results:NSL-KDD:Accuracy84.15%,F184.85%.Out-
+performed GA, PSO, and other DRL baselines (AE-RL,
+SHIA,SSDDQN).AWID:Accuracy98.9%,F1>98.9%.CI-
+CIDS2017:Accuracy98.41%.Efficiency:Featurereduction
+(122→50 for NSL-KDD) reduced training time by 33%
+(180s→120s compared to GA-SAC).
+Limitations: Struggles with U2R (User-to-Root) cate-
+gory due to limited training samples (class imbalance).
+Future Work: Explore SMOTE and GANs for data aug-
+mentation to address U2R imbalance.
+Severin, Eric, Moussa, Vianey, Armand, and Pierre
+(2025) employed AE-LSTM (Feature Extraction) and Cen-
+tralized MARL (Decision Making)
+AE-LSTM (Autoencoder LSTM):
+Encoder: 3-layer LSTM (64 units) to compress time-
+series network flows into latent vectors (𝑧).
+Decoder: 3-layer LSTM to reconstruct the input. MSE
+loss used for training.
+Multi-Agent Environment (MultiIoT23Env):
+Agents: Multiple PPO Agents (5 agents mentioned:
+Agents 0-4).
+Structure : Centralized Training, Decentralized Execu-
+tion (CTDE) paradigm
+Input: Latent vectors from AE-LSTM.
+Action: Binary classification (0: Normal, 1: Attack).
+Dataset: IoT-23 (Subset: 5% of original, split into 80%
+train / 20% test). Preprocessing: Cleaning, Correlation re-
+moval (>0.95), Normalization (StandardScaler), and Class
+Balancing (SMOTE-ENN).
+Metrics: Precision:99.30%, Recall: 99.35%., F1-Score:
+99.40 %.
+Limitations: Complexity of multi-agent configuration
+relative to single-agent. Resource constraints on real IoT
+devices (CPU/Memory) need validation.
+FutureWork:Integrationofattentionmechanisms(Trans-
+formers);Validationonreal-worldresource-constrainedhard-
+ware; Dynamic agent policy management.
+2.4. Research Motivation
+DespitethenotablesuccesofrecnetDeepReinforcement
+Learning (DRL) and generative models in IoT Intrusion
+detection , there is two critical gaps unaddressed . First ,
+existing models heavily rely on external data augmentation
+techniques such as GANs and SMOTE to mitigate extremeclass imbalance such as the U2R class in Jin et al. (2025)
+, which artificially alters the original data distribution and
+increasescomputationaloverhead.Second,whenmitigating
+zero days attacks , current methos primarily rely on static
+anomaly detection thresholds such as EVT in Yu et al.
+(2024) that flag novel attacks as generic unknowns without
+dynamicallylearningtheirsignatures,oftenresultinginhigh
+miss rates.
+Toaddressthesecriticallimitations,weproposesanovel
+framework: Continual Open-Set Reinforcement Learning
+withRarity-AwareDynamicRewardShaping.Handlingim-
+balance via reward shaping, instead of preprocessing or
+generating synthetic data, the reward function dynamically
+scales the agent’s rewards to the class probability , this
+natively forces the RL agent to prioritize minority classes
+without altering the dataset.
+Continual zero-day attack discovery, rather than stati-
+cally flagging unknown traffic, the RL agent clustering and
+learning new zero-day attacks as distinct classes without
+forgetting previously known attacks.
+By bridging dynamic reward shaping with continual
+open-set learning, this framework aims to provide a highly
+adaptive and suitable solution for dynamic IoT environ-
+ments.
+3. Problem Formulation
+IndynamicIoTenvironments,networktrafficiscontinu-
+ouslygeneratedbytheheterogenousdeviceswithhighlyim-
+balanced attacks and the potential emergence of previously
+unseen attacks (zero-day). We formulate the IoT intrusion
+detection task as continual open set reinforcement learning
+problem over an imbalanced data stream.
+3.1. IoT Traffic Representation
+Let IoT Traffic stream be represented as a sequence of
+feature vectors :
+𝑥𝑡∈ℝ𝑑(1)
+Where𝑑denotesthenumberofextractedtrafficfeatures
+after after preprocessing and normalization.
+Each traffic instance is associated with a class label :
+𝑦𝑡∈= {𝑐1,𝑐2,...,𝑐𝐾}(2)
+Whererepresents the set of known attack categories and
+benign traffic.
+Due to real-world imbalance, the empirical class distri-
+bution is defined as :
+𝑝(𝑐𝑖) =𝑁𝑐𝑖
+𝑁total(3)
+where𝑁𝑐𝑖denotesthenumberofsamplesbelongingtoclass
+𝑐𝑖, and𝑁totalis the total number of samples.
+In practical IoT datasets , certain class satisfy :
+𝑝(𝑐𝑖)≪𝑝(𝑐𝑗),∃𝑖,𝑗(4)
+Berini et al.:Preprint submitted to ElsevierPage 3 of 7
+--- Page 4 ---
+Short Title of the Article
+indicating severe minority class imbalance.
+MDP Formulation We model intrusion detection as a
+Markov Decision Process (MDP) defined as :
+= (𝑆,𝐴,𝑃,𝑅,𝛾)(5)
+where:
+•𝑆is the state space, defined as𝑆=ℝ𝑑, representing
+normalized IoT feature vectors.
+•𝐴is the action space corresponding to classification
+decisions:
+𝐴= {1,2,...,𝐾}(6)
+•𝑃(𝑠𝑡+1|𝑠𝑡,𝑎𝑡)denotestheenvironmenttransitionprob-
+ability.
+•𝑅(𝑠𝑡,𝑎𝑡)is the reward function.
+•𝛾∈ (0,1]is the discount factor.
+At each timestep𝑡, the agent observes state𝑠𝑡=𝑥𝑡,
+selects an action𝑎𝑡∈𝐴, and receives a reward𝑅𝑡based
+on prediction correctness.
+The objective is to learn an optimal stochastic policy
+𝜋𝜃(𝑎|𝑠)that maximizes the expected discounted cumulative
+reward:
+𝜋∗= arg max
+𝜋𝔼𝜋[∞∑
+𝑡=0𝛾𝑡𝑅𝑡]
+(7)
+3.2. Rarity-Aware Reward Definition
+Toaddressclassimbalancewithoutalteringtheoriginal
+datadistribution,weintroduceararity-awarerewardshaping
+mechanism.Let𝑅basedenotethebaseclassificationreward:
+𝑅base={
++1,if𝑎𝑡=𝑦𝑡
+−1,otherwise(8)
+We define the rarity-aware reward as:
+𝑅𝑡=𝑅base ⋅(
+1 +𝛼log(
+1 +1
+𝑝(𝑦𝑡)))
+(9)
+where𝛼 >0controls the strength of imbalance compen-
+sation. This formulation increases the reward contribution
+of minority classes while preserving the original dataset
+distribution.
+3.3. Open-Set Intrusion Detection
+IndynamicIoTnetworks,previouslyunseenattacksmay
+appear during deployment . Let𝑥𝑢denote a traffic sample
+drawn from an unknown distribution:
+𝑥𝑢∼𝑃unknown, 𝑥𝑢∉(10)
+The agent must satisfy the following requirements:1. Detecthigh-uncertaintysamplesthatdonotbelongto
+known classes.
+2. Assign them to a temporary unknown buffer.
+3. Expand the class set:
+←∪ {𝑐𝐾+1}(11)
+4. Update the policy𝜋𝜃without catastrophic forgetting.
+3.4. Continual Learning Objective
+Let𝑡denote the set of known classes at time𝑡. The
+learning objective extends to:
+max
+𝜋𝜃𝔼[∞∑
+𝑡=0𝛾𝑡𝑅𝑡]
+subject to𝑡⊆𝑡+1(12)
+while minimizing performance degradation on previ-
+ously learned classes.
+Thisformulationdefinesintrusiondetectionasacontin-
+ual open-set reinforcement learning problem under severe
+class imbalance, forming the theoretical foundation of the
+proposed CORL-IDS framework.
+4. Proposed CORL-IDS Framework
+This section presents the proposed Continual Open-
+Set Reinforcement Learning Intrusion Detection System
+(CORL-IDS).Theframeworkintegratesrarity-awarereward
+shaping, entropy-based open-set detection, and continual
+class expansion into a unified reinforcement learning archi-
+tecture.
+4.1. Overall Architecture
+The proposed framework consists of four main compo-
+nents :
+1. Feature Encoding Module
+2. Rarity-Aware Soft Actor-Critic Agent
+3. Entropy-Based Novelty Detection Module
+4. ContinualClassExpansionwithStabilityRegulariza-
+tion
+At each timestep𝑡, an incoming IoT traffic instance
+𝑥𝑡is encoded into a latent representation𝑧𝑡, processed by
+the RL agent for classification, and evaluated by a novelty
+detectionmechanism.Ifasampleisidentifiedasunknown,
+it is temporarily stored and later used for class expansion.
+4.2. Feature Encoding Module
+IoT traffic exhibits temporal dependencies across se-
+quential flows.
+To capture temporal dynamics while maintaining com-
+putational efficiency, we employ a lightweight LSTM en-
+coder.
+Let𝑥𝑡∈ℝ𝑑denote the normalized feature vector. The
+encoder maps𝑥𝑡into a latent representation:
+𝑧𝑡=𝑓𝜙(𝑥𝑡)(13)
+Berini et al.:Preprint submitted to ElsevierPage 4 of 7
+--- Page 5 ---
+Short Title of the Article
+where𝑓𝜙(𝑥𝑡)representsasingle-layerLSTMwith64hidden
+units followed by a linear projection layer.
+Thelatentvector𝑧𝑡∈ℝℎservesasthestaterepresenta-
+tion for the reinforcement learning agent.
+4.3. Rarity-Aware Soft Actor-Critic Optimization
+We adopt the soft actor-critic (SAC) framework as the
+core learning algorithm due to its stability and entropy-
+regularized exploration.
+The stochastic policy is defined as
+𝜋𝜃(𝑎|𝑧)(14)
+SAC optimizes the entropy-regularized objective:
+𝐽(𝜋) =𝔼(𝑧𝑡,𝑎𝑡)∼𝜋[∞∑
+𝑡=0𝛾𝑡(𝑅𝑡+𝛼ent𝐻(𝜋(⋅|𝑧𝑡)))]
+(15)
+where𝐻(⋅)denotes policy entropy and𝛼entcontrols
+exploration.
+4.3.1. Rarity-Aware Reward Shaping
+To address severe class imbalance without altering the
+original data distribution , we introduce a log-scaled rarity-
+aware reward:
+𝑅𝑡=𝑅base(
+1 +𝜆log(
+1 +1
+𝑝(𝑦𝑡)))
+(16)
+where:
+•𝑅base∈ {+1,−1},
+•𝑝(𝑦𝑡)is the empirical class probability,
+•𝜆controls imbalance compensation strength.
+Thisformulationamplifiesminority-classrewardswhile
+preventing instability via logarithmic scaling.
+4.3.2. Critic Update
+TwinQ-networks𝑄𝜔1and𝑄𝜔2areoptimizedusingthe
+Bellman residual:
+𝐽𝑄(𝜔𝑖) =𝔼[(
+𝑄𝜔𝑖(𝑧𝑡,𝑎𝑡) −𝑦𝑡)2]
+(17)
+where the target value is :
+𝑦𝑡=𝑅𝑡+𝛾(
+min
+𝑗=1,2𝑄target
+𝜔𝑗(𝑧𝑡+1,𝑎𝑡+1) −𝛼entlog𝜋𝜃(𝑎𝑡+1|𝑧𝑡+1))
+(18)4.4. Entropy-Based Novelty Detection
+To enable open-set intrusion detection , we measure
+policy uncertainty using entroy:
+𝐻𝑡= −∑
+𝑎∈𝐴𝜋𝜃(𝑎|𝑧𝑡) log𝜋𝜃(𝑎|𝑧𝑡)(19)
+An adaptive threshold is defined as:
+𝜏𝑡=𝜇𝐻+𝛽𝜎𝐻 (20)
+where𝜇𝐻and𝜎𝐻denote running mean and standard devi-
+ation of entropy values and𝛽control sensitivity.
+If :
+𝐻𝑡>𝜏𝑡 (21)
+thesampleisconsideredpotentiallyunknownandstored
+in an unknown buffer𝑢for further analysis.
+4.5. Continual Class Expansion
+Unknown samples accumulated in𝑢are periodically
+clusteredusingdensity-basedclusteringIfastablecluster
+is identified with density, a new class𝑐𝐾+1is created
+←∪ {𝑐𝐾+1}(22)
+4.5.1. Stability Regularization
+To prevent catastrophic forgetting, we incorporate Elas-
+tic Weight Consolidation (EWC).
+The regularized loss becomes
+total=SAC+𝜂
+2∑
+𝑖𝐹𝑖(𝜃𝑖−𝜃∗
+𝑖)2(23)
+where:
+•𝐹𝑖is the Fisher Information matrix diagonal,
+•𝜃∗
+𝑖denotes previously learned parameters,
+•𝜂controls stability strength.
+4.6. Learning Procedure
+The complete training process alternates between:
+1. Rarity-aware SAC optimization
+2. Entropy-based unknown detection
+3. Periodic clustering and class expansion
+4. Continual policy update with EWC
+This unified design enables adaptive minority-class re-
+inforcement, dynamic zero-day discovery, and continual
+knowledge retention within a single reinforcement learning
+framework.
+5. Experimental Setup
+Thissectiondescribesthedatasets,preprocessingpipeline,
+evaluation metrics, baseline models, and experimental pro-
+tocolsusedtovalidatetheproposedCORL-IDSframework.
+Berini et al.:Preprint submitted to ElsevierPage 5 of 7
+--- Page 6 ---
+Short Title of the Article
+5.1. Datasets
+To evaluate robustness under heterogeneous IoT condi-
+tions , experiments are conducted on two publicly available
+intrusion detection datasets:
+•CICIDS2017:Awidelyusedbenchmarkcontaining
+benign and multiple attack categories including DoS,
+DDoS, Brute Force, Infiltration, Botnet, and Web at-
+tacks.
+•TON-IoT: A realistic IoT telemetry dataset contain-
+ing network and device-level attacks such as Scan-
+ning, DDoS, Ransomware, Injection, and Backdoor.
+These datasets were selected due to :
+1. Severe class imbalance in minority attack categories.
+2. Presence of diverse attack families suitable for open-
+set evaluation.
+3. Realistic IoT network traffic characteristics.
+5.2. Data preprocessing
+The following preprocessing steps are applied :
+•Removal of duplicate and corrupted entries.
+•Missing value imputation.
+•Min-Max normalization applied to all numerical fea-
+tures.
+•Temporalorderingoftrafficflowsforsequentialmod-
+eling.
+No data generation was applied, such as SMOTE or
+GAN-based augmentation, to preserve the natural class dis-
+tribution.
+5.3. Imbalance Configration
+Toevaluaterobustnessunderextremeimbalance,minor-
+ity attack classes with probability:
+𝑝(𝑐𝑖)<0.02(24)
+are explicitly retained without resampling.
+Theproposedrarity-awarerewardshapingisresponsible
+for imbalance mitigation.
+5.4. Open-Set Experimental Protocol
+To simulate zero-day attack conditions, we adopt the
+following open-set protocol:
+1. Select a subset of attack classes as known classes
+during training.
+2. Removeoneormoreattackcategoriesfromthetrain-
+ing set.
+3. Introduce the removed classes only during testing.
+Let:
+𝑡𝑟𝑎𝑖𝑛⊂𝑡𝑒𝑠𝑡 (25)
+Unknown classes are treated as zero-day attacks and
+evaluated using the entropy-based novelty detection mech-
+anism.5.5. Continual Learning Scenario
+TosimulatedynamicIoTdeployment,thedatastreamis
+divided into sequential phases:
+•Phase 1: Training on initial known classes.
+•Phase 2: Introduction of unknown attack samples.
+•Phase 3: Class expansion and policy adaptation.
+5.6. Baseline Models
+TheproposedCORL-IDSframeworkiscomparedagainst
+:
+•Vanilla Soft Actor-Critic (without reward shaping).
+•Soft Actor-Critic with SMOTE-based oversampling.
+•Deep Q-Network (DQN).
+•Proximal Policy Optimization (PPO).
+Allbaselinemodelsuseidenticalfeatureinputsforfairness.
+5.7. Evaluation Metrics
+Toprovideacomprehensiveevaluationunderimbalance
+andopen-setconditions,thefollowingmetricsarereported:
+•Accuracy
+•Precision
+•Recall
+•F1-score (Macro and Minority-class specific)
+•Balanced Accuracy
+•False Positive Rate (FPR)
+•Open-set Detection Rate (Unknown Recall)
+•Catastrophic Forgetting Measure:
+𝐹=1
+𝐾𝐾∑
+𝑖=1(
+max
+𝑡𝑅𝑖,𝑡−𝑅𝑖,𝑇)
+(26)
+where𝑅𝑖,𝑡denotesperformanceonclass𝑖atphase𝑡,and
+𝑇is the final phase.
+5.8. Implementation Details
+The model is implemented in PyTorch.
+Key hyperparameters:
+•Discount factor𝛾= 0.99
+•Entropy coefficient𝛼entautomatically tuned
+•Rarity scaling coefficient𝜆∈ {0.5,1.0,2.0}
+•LSTM hidden units: 64
+•Replay buffer size: 100,000
+•Batch size: 256
+•Optimizer: Adam with learning rate3 × 10−4
+All experiments are repeated over three independent
+runs, and average performance is reported.
+Berini et al.:Preprint submitted to ElsevierPage 6 of 7
+--- Page 7 ---
+Short Title of the Article
+References
+P. Phalaagae, A. M. Zungeru, A. Yahya, B. Sigweni, S. Rajalakshmi,
+A hybrid CNN-LSTM model with attention mechanism for improved
+intrusiondetectioninwirelessIoTsensornetworks,IEEEAccess(2025).
+I.A.Fares,A.G.A.Ibrahim,M.A.Elaziz,M.Shrahili,A.A.Elmahallawy,
+R. M. Sohaib, M. A. Shawky, S. T. Shah, Deep transfer learning based
+onhybridswintransformerswithLSTMforintrusiondetectionsystems
+inIoTenvironment, IEEEOpenJournaloftheCommunicationsSociety
+(2025).
+S.Racherla,P.Sripathi,N.Faruqui,M.A.Kabir,M.Whaiduzzaman,S.A.
+Shah,Deep-IDS:Areal-timeintrusiondetectorforIoTnodesusingdeep
+learning, IEEE Access (2024).
+N. Wei, L. Yin, J. Tan, C. Ruan, C. Yin, Z. Sun, X. Luo, An autoencoder-
+based hybrid detection model for intrusion detection with small-sample
+problem, IEEE Transactions on Network and Service Management
+(2024).
+S.Yu,R.Zhai,Y.Shen,G.Wu,H.Zhang,S.Yu,S.Shen, DeepQ-network-
+based open-set intrusion detection solution for industrial internet of
+things, IEEE Internet of Things Journal (2024).
+C. Rookard, A. Khojandi, Applying deep reinforcement learning for
+detectionofinternet-of-thingscyberattacks, in:2023IEEE13thAnnual
+Computing and Communication Workshop and Conference (CCWC),
+2023. doi:10.1109/CCWC57344.2023.10099349.
+A. Ghubaish, Z. Yang, R. Jain, HDRL-IDS: A hybrid deep reinforcement
+learning intrusion detection system for enhancing the security of med-
+ical applications in 5g networks, in: 2024 International Conference
+on Smart Applications, Communications and Networking (SmartNets),
+2024. doi:10.1109/SMARTNETS61466.2024.10577692.
+L. Jin, R. Fan, X. Han, X. Cui, IGSA-SAC: a novel approach for intrusion
+detection using improved gravitational search algorithm and soft actor-
+critic, Frontiers in Computer Science (2025).
+N. Severin, F. Eric, H. A. Moussa, K. T. S. Vianey, N. T. Armand, L. J.
+Pierre, Intelligent approach to intrusion detection based on multi-agent
+reinforcement learning (MARL) in smart IoT environments, Interna-
+tional Journal of Intelligence Science (2025).
+Berini et al.:Preprint submitted to ElsevierPage 7 of 7
