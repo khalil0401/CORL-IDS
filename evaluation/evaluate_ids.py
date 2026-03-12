@@ -38,19 +38,19 @@ from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
 )
+BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from data_loader        import load_dataset
-from preprocessing      import preprocess
-from sequence_builder   import build_sequences
-from lstm_encoder       import LSTMEncoder
-from sac_discrete       import DiscreteSAC
-from entropy_detector   import EntropyDetector
-from prototype_detector import PrototypeDetector
-from unknown_buffer     import UnknownBuffer
-from cluster_discovery  import ContinualClassDiscovery
-from ids_environment    import IDSEnvironment
+from data.dataset_loader import load_dataset
+from data.preprocessing import preprocess
+from data.sequence_builder import build_sequences
+from models.lstm_encoder import LSTMEncoder
+from models.sac_agent import DiscreteSAC
+from detection.confidence_unknown import ConfidenceUnknownDetector
+from detection.centroid_detector import CentroidDetector
+from training.unknown_buffer import UnknownBuffer
+from detection.cluster_discovery import ContinualClassDiscovery
+from training.ids_environment import IDSEnvironment
 
 
 BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,22 +80,13 @@ def load_sklearn(ckpt_path):
 # PHASE 1 - Known-class inference
 # =======================================================================
 
-def run_inference(encoder, sac, X_seq, y_seq, entropy_det, device, batch_size=512):
+def run_inference(encoder, sac, X_seq, y_seq, device, batch_size=512):
     """
-    Run forward pass over test sequences.
-
-    Returns
-    -------
-    all_preds   : np.ndarray (N,)   predicted class idx
-    all_true    : np.ndarray (N,)   true class idx
-    all_H       : np.ndarray (N,)   per-sample policy entropy
-    all_probs   : np.ndarray (N, A) policy probability distributions
-    all_z       : np.ndarray (N, latent_dim)   latent vectors
+    Run forward pass over test sequences using vectorized batch operations.
     """
     N = len(y_seq)
     all_preds = []
     all_true  = []
-    all_H     = []
     all_probs = []
     all_z     = []
 
@@ -108,24 +99,18 @@ def run_inference(encoder, sac, X_seq, y_seq, entropy_det, device, batch_size=51
                                dtype=torch.float32, device=device)
             yb = y_seq[start: start + batch_size]
 
-            z_batch = encoder(xb).cpu().numpy()          # (B, latent_dim)
+            z_batch = encoder(xb)
+            actions, probs = sac.select_action_batch(z_batch, deterministic=True)
 
-            for z, true_lbl in zip(z_batch, yb):
-                action, probs = sac.select_action(z, deterministic=True)
-                H = entropy_det.entropy_from_probs(probs)
-                entropy_det.update(H)
-
-                all_preds.append(action)
-                all_true.append(int(true_lbl))
-                all_H.append(H)
-                all_probs.append(probs)
-                all_z.append(z)
+            all_preds.extend(actions.cpu().tolist())
+            all_true.extend(yb.tolist())
+            all_probs.append(probs.cpu().numpy())
+            all_z.append(z_batch.cpu().numpy())
 
     return (np.array(all_preds),
             np.array(all_true),
-            np.array(all_H),
-            np.array(all_probs),
-            np.array(all_z, dtype=np.float32))
+            np.concatenate(all_probs, axis=0),
+            np.concatenate(all_z, axis=0))
 
 
 # =======================================================================
@@ -213,23 +198,20 @@ def evaluate(ckpt_path, device_str="cpu",
         [orig_to_vis.get(int(lbl), -1) for lbl in y_seq], dtype=np.int64
     )
 
-    # Prime entropy detector (kept for visualisation)
-    entropy_det = EntropyDetector(beta=beta_entropy, min_samples=500)
-    ref_H = math.log(num_known) / 2.0
-    rng   = np.random.default_rng(42)
-    for _ in range(500):
-        entropy_det.update(float(rng.normal(ref_H, 0.15)))
+    # Prime Confidence detector
+    conf_det = ConfidenceUnknownDetector(threshold=0.60)
 
-    # -- Fit Prototype Detector from TRAINING data -----------------------
-    print("\nFitting prototype detector on training data ...")
+    # -- Fit Centroid (Mahalanobis) Detector from TRAINING data -----------------------
+    print("\nFitting Centroid/Mahalanobis detector on training data ...")
     X_train_np_full, _, _, _, _, _, _, _ = load_dataset(
         csv_path, seed=cfg.get("seed", 42), hidden_classes=hidden_names
     )
     # Reuse same preprocessor (scaler fitted on training data)
     X_train_np_arr, _, _, _ = preprocess(X_train_raw, X_test_raw)
-    # Build a subsample of training sequences (max 20k for speed)
+    
+    # We can process the entire training set for centroids natively now
     X_seq_tr, y_seq_tr = build_sequences(X_train_np_arr, y_train, seq_len)
-    # Remap training labels to visible indices
+    
     y_seq_tr_vis = np.array(
         [orig_to_vis.get(int(lbl), -1) for lbl in y_seq_tr], dtype=np.int64
     )
@@ -237,24 +219,17 @@ def evaluate(ckpt_path, device_str="cpu",
     X_seq_tr  = X_seq_tr[valid_tr]
     y_seq_tr_vis = y_seq_tr_vis[valid_tr]
 
-    # Subsample for speed
-    N_proto = min(20_000, len(X_seq_tr))
-    rng_np  = np.random.default_rng(42)
-    idx_sub = rng_np.choice(len(X_seq_tr), size=N_proto, replace=False)
-    X_sub   = X_seq_tr[idx_sub]
-    y_sub   = y_seq_tr_vis[idx_sub]
-
     encoder.eval()
     with torch.no_grad():
         Z_train_list = []
         bs = 512
-        for si in range(0, len(X_sub), bs):
-            xb = torch.tensor(X_sub[si:si+bs], dtype=torch.float32, device=device)
+        for si in range(0, len(X_seq_tr), bs):
+            xb = torch.tensor(X_seq_tr[si:si+bs], dtype=torch.float32, device=device)
             Z_train_list.append(encoder(xb).cpu().numpy())
-    Z_train_proto = np.concatenate(Z_train_list, axis=0)
+    Z_train_full = np.concatenate(Z_train_list, axis=0)
 
-    proto_det = PrototypeDetector(margin=proto_margin)
-    proto_det.fit(Z_train_proto, y_sub, num_classes=num_known)
+    centroid_det = CentroidDetector(distance_multiplier=3.0)
+    centroid_det.fit(Z_train_full, y_seq_tr_vis, num_classes=num_known)
 
     # ===================================================================
     # PHASE 1 - Known-class inference
@@ -263,27 +238,26 @@ def evaluate(ckpt_path, device_str="cpu",
     print(f"  PHASE 1 - Known-class classification")
     print(f"{'='*60}")
 
-    all_preds, all_true, all_H, all_probs, all_z = run_inference(
-        encoder, sac, X_seq, y_seq, entropy_det, device
+    all_preds, all_true, all_probs, all_z = run_inference(
+        encoder, sac, X_seq, y_seq, device
     )
 
-    # Flag unknowns: prototype distance OR high entropy (union of signals)
-    proto_unknown, min_dists, nearest_proto = proto_det.predict_batch(all_z)
-    entropy_unknown = all_H > entropy_det.threshold
+    # Flag unknowns: confidence bounds OR centroid bounds
+    centroid_unknown = centroid_det.predict_batch(all_z)
+    conf_unknown = conf_det.predict_batch(all_probs)
 
     # Combined: a sample is UNKNOWN if either detector flags it
-    unknown_mask = proto_unknown | entropy_unknown
+    unknown_mask = centroid_unknown | conf_unknown
     known_mask   = ~unknown_mask
 
     # Breakdown: how many hidden-class samples were flagged?
     hidden_flagged = (unknown_mask & is_hidden_sample).sum()
     hidden_total   = is_hidden_sample.sum()
 
-    print(f"\n  Prototype threshold (tau_proto)  : {proto_det.threshold:.4f}")
-    print(f"  Entropy threshold   (tau_entropy): {entropy_det.threshold:.4f}")
-    print(f"  Flagged by prototype distance    : {proto_unknown.sum():,}")
-    print(f"  Flagged by entropy               : {entropy_unknown.sum():,}")
-    print(f"  Flagged by EITHER  (union)       : {unknown_mask.sum():,} / {len(all_H):,} "
+    print(f"\n  Confidence threshold (tau_conf)  : {conf_det.threshold:.2f}")
+    print(f"  Flagged by representation distance (Centroid) : {centroid_unknown.sum():,}")
+    print(f"  Flagged by absolute policy confidence         : {conf_unknown.sum():,}")
+    print(f"  Flagged by EITHER (union)        : {unknown_mask.sum():,} / {len(all_preds):,} "
           f"({100*unknown_mask.mean():.1f}%)")
     if hidden_total > 0:
         print(f"  Hidden-class samples : {hidden_total:,} in test set")
@@ -360,24 +334,25 @@ def evaluate(ckpt_path, device_str="cpu",
     f1   = f1   if vis_known_mask.sum() > 0 else 0.0
     far  = far  if vis_known_mask.sum() > 0 else 0.0
 
-    # Entropy histogram: separate hidden vs visible unknowns
+    # Confidence histogram: separate hidden vs visible unknowns
+    all_conf = np.max(all_probs, axis=-1)
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.hist(all_H[known_mask & is_visible_sample],  bins=60, alpha=0.6,
+    ax.hist(all_conf[known_mask & is_visible_sample],  bins=60, alpha=0.6,
             label="Visible - classified", color="steelblue", edgecolor="white")
-    ax.hist(all_H[unknown_mask & is_visible_sample], bins=60, alpha=0.6,
+    ax.hist(all_conf[unknown_mask & is_visible_sample], bins=60, alpha=0.6,
             label="Visible - flagged unknown", color="orange", edgecolor="white")
     if is_hidden_sample.sum() > 0:
-        ax.hist(all_H[is_hidden_sample], bins=60, alpha=0.7,
+        ax.hist(all_conf[is_hidden_sample], bins=60, alpha=0.7,
                 label=f"Hidden classes {hidden_names}", color="salmon",
                 edgecolor="white")
-    ax.axvline(entropy_det.threshold, color="red", lw=2, linestyle="--", label=f"tau={entropy_det.threshold:.3f}")
-    ax.set_title("Policy Entropy Distribution - Test Set")
-    ax.set_xlabel("Entropy H")
+    ax.axvline(conf_det.threshold, color="red", lw=2, linestyle="--", label=f"tau={conf_det.threshold:.3f}")
+    ax.set_title("Policy Confidence Distribution - Test Set")
+    ax.set_xlabel("Confidence")
     ax.legend(fontsize=8)
-    ent_path = os.path.join(LOG_DIR, "eval_entropy_distribution.png")
+    ent_path = os.path.join(LOG_DIR, "eval_confidence_distribution.png")
     fig.savefig(ent_path, dpi=120)
     plt.close(fig)
-    print(f"  [OK] Entropy plot -> {ent_path}")
+    print(f"  [OK] Confidence plot -> {ent_path}")
 
     # ===================================================================
     # PHASE 2 - Open-set discovery on unknown latent vectors

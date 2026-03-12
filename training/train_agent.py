@@ -36,16 +36,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # -- Local imports -------------------------------------------------------
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
-from data_loader      import load_dataset
-from preprocessing    import preprocess
-from sequence_builder import build_sequences
-from lstm_encoder     import LSTMEncoder
-from ids_environment  import IDSEnvironment
-from rarity_reward    import RarityReward
-from replay_buffer    import ReplayBuffer
-from sac_discrete     import DiscreteSAC
+from data.dataset_loader import load_dataset
+from data.preprocessing import preprocess
+from data.sequence_builder import build_sequences
+from models.lstm_encoder import LSTMEncoder
+from models.sac_agent import DiscreteSAC
+from rewards.rarity_reward import RarityReward
+from training.ids_environment import IDSEnvironment
+from training.replay_buffer import ReplayBuffer
 
 
 # =======================================================================
