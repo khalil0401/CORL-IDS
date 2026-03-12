@@ -198,8 +198,8 @@ def evaluate(ckpt_path, device_str="cpu",
         [orig_to_vis.get(int(lbl), -1) for lbl in y_seq], dtype=np.int64
     )
 
-    # Prime Confidence detector
-    conf_det = ConfidenceUnknownDetector(threshold=0.60)
+    # Prime Confidence detector (Higher threshold makes it more aggressive at catching unknowns)
+    conf_det = ConfidenceUnknownDetector(threshold=0.75)
 
     # -- Fit Centroid (Mahalanobis) Detector from TRAINING data -----------------------
     print("\nFitting Centroid/Mahalanobis detector on training data ...")
@@ -228,7 +228,7 @@ def evaluate(ckpt_path, device_str="cpu",
             Z_train_list.append(encoder(xb).cpu().numpy())
     Z_train_full = np.concatenate(Z_train_list, axis=0)
 
-    centroid_det = CentroidDetector(distance_multiplier=3.0)
+    centroid_det = CentroidDetector(distance_multiplier=2.5)
     centroid_det.fit(Z_train_full, y_seq_tr_vis, num_classes=num_known)
 
     # ===================================================================
