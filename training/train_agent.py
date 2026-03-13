@@ -213,7 +213,7 @@ def train(cfg):
 
     # -- 4. Build modules ------------------------------------------------
     encoder  = LSTMEncoder(feature_dim, cfg["lstm_hidden"], cfg["latent_dim"]).to(device)
-    enc_optim = torch.optim.Adam(encoder.parameters(), lr=cfg["lr"])
+    encoder_classifier = torch.nn.Linear(cfg["latent_dim"], num_classes).to(device)
 
     # Map original index probabilities to visible index probabilities purely
     # based on the original un-sampled training distribution
@@ -222,6 +222,14 @@ def train(cfg):
     # Pre-compute inverse probability weights for balanced replay sampling
     # (Removed to avoid double compensation; CORL-IDS uses RarityReward directly)
     class_weights = None
+    
+    ce_weights = torch.zeros(num_classes, dtype=torch.float32, device=device)
+    for c, prob in class_probs_vis.items():
+        ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 0.5)
+    ce_weights /= ce_weights.sum()
+
+    encoder_criterion = torch.nn.CrossEntropyLoss(weight=ce_weights)
+    enc_optim = torch.optim.Adam(list(encoder.parameters()) + list(encoder_classifier.parameters()), lr=cfg["lr"])
 
     rarity  = RarityReward(class_probs_vis, lambda_=cfg["lambda_rarity"])
     env     = IDSEnvironment(num_classes, rarity_reward=rarity)
@@ -259,14 +267,15 @@ def train(cfg):
             xb = torch.tensor(X_shuffled[s:e], dtype=torch.float32, device=device)
             yb = y_shuffled[s:e]
 
-            # a) Encode + contrastive loss (FIX 2)
+            # a) Encode + CrossEntropy representation clustering
             xb_t = torch.tensor(X_shuffled[s:e], dtype=torch.float32, device=device)
             yb_t = torch.tensor(y_shuffled[s:e], dtype=torch.long,    device=device)
             yb   = y_shuffled[s:e]
 
             encoder.train()
             z_batch_t = encoder(xb_t)
-            c_loss    = supervised_contrastive_loss(z_batch_t, yb_t)
+            logits    = encoder_classifier(z_batch_t)
+            c_loss    = encoder_criterion(logits, yb_t)
             enc_optim.zero_grad()
             (cfg.get("lambda_contrast", 0.5) * c_loss).backward()
             enc_optim.step()
@@ -291,7 +300,7 @@ def train(cfg):
 
             # d) SAC update + continuous exploration guarantee
             if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                states_s, acts_s, rews_s, next_s, dones_s = replay.sample(cfg["batch_size"])
+                states_s, acts_s, rews_s, next_s, dones_s = replay.sample(cfg["batch_size"], class_weights=ce_weights)
                 info = sac.update(
                     states_s,
                     acts_s,

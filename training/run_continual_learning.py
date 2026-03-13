@@ -119,9 +119,17 @@ def run_pipeline(cfg):
     print("[INIT] Building Core Components...")
     try:
         encoder = LSTMEncoder(feature_dim, cfg["lstm_hidden"], cfg["latent_dim"], use_attention=cfg["use_attention"]).to(device)
-        enc_optim = torch.optim.Adam(encoder.parameters(), lr=cfg["lr"])
+        encoder_classifier = torch.nn.Linear(cfg["latent_dim"], num_known_classes).to(device)
 
         class_probs_vis = {orig_to_vis[orig]: p for orig, p in class_probs.items() if orig in orig_to_vis}
+        
+        ce_weights = torch.zeros(num_known_classes, dtype=torch.float32, device=device)
+        for c, prob in class_probs_vis.items():
+            ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 0.5)
+        ce_weights /= ce_weights.sum()
+
+        encoder_criterion = torch.nn.CrossEntropyLoss(weight=ce_weights)
+        enc_optim = torch.optim.Adam(list(encoder.parameters()) + list(encoder_classifier.parameters()), lr=cfg["lr"])
         # Explicit oversampling removed from Phase 1 to prevent double-compensation against RarityReward
         # (The paper strictly specifies RarityReward as the mechanism, without synthetic oversampling like SMOTE or inverted weights)
 
@@ -159,7 +167,8 @@ def run_pipeline(cfg):
 
                 encoder.train()
                 z_batch_t = encoder(xb_t)
-                c_loss = supervised_contrastive_loss(z_batch_t, yb_t)
+                logits = encoder_classifier(z_batch_t)
+                c_loss = encoder_criterion(logits, yb_t)
                 enc_optim.zero_grad()
                 (cfg["lambda_contrast"] * c_loss).backward()
                 enc_optim.step()
@@ -172,7 +181,7 @@ def run_pipeline(cfg):
                 replay.push_batch(states_t, actions_t, rewards_t, next_states_t, dones_t, true_labels=yb_t)
 
                 if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"]) # NO class weights in Phase 1
+                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"], class_weights=ce_weights)
                     sac.update(sr, ar, rr, nr, dr, ewc_loss=None)
                     if hasattr(sac, "log_alpha"):
                         with torch.no_grad(): sac.log_alpha.clamp_(min=math.log(alpha_min))
@@ -345,6 +354,15 @@ def run_pipeline(cfg):
             db = DBSCAN(eps=1.2, min_samples=30, n_jobs=-1).fit(flagged_z)
             pseudo_labels = db.labels_
 
+            # Sort clusters by size to strictly match discovery boundaries and prevent index crashes
+            cluster_sizes = []
+            for unique_c in [c for c in np.unique(pseudo_labels) if c != -1]:
+                mask = pseudo_labels == unique_c
+                if mask.sum() >= 50:
+                    cluster_sizes.append((unique_c, mask.sum()))
+            cluster_sizes.sort(key=lambda x: x[1], reverse=True)
+            stable_clusters = [c for c, _ in cluster_sizes[:n_new]]
+
             # Save Clusters Image
             c2d = discovery.get_centroids_2d()
             if c2d is not None and len(c2d) >= 1:
@@ -356,19 +374,18 @@ def run_pipeline(cfg):
                 print(f"  -> Saved logs/clusters_phase2.png")
 
             injected_count = 0
-            for unique_c in [c for c in np.unique(pseudo_labels) if c != -1]:
+            for unique_c in stable_clusters:
                 mask = pseudo_labels == unique_c
-                if mask.sum() >= 50:
-                    sac_class_id = num_known_classes + injected_count
-                    centroid_det.incremental_update(sac_class_id, flagged_z[mask])
-                    
-                    xb_new = torch.tensor(X_seq_test[flagged_idx][mask], dtype=torch.float32, device=device)
-                    encoder.eval()
-                    with torch.no_grad(): z_new = encoder(xb_new)
-                    acts = torch.full((len(z_new),), sac_class_id, dtype=torch.int64, device=device)
-                    rews = torch.full((len(z_new),), 1.0, dtype=torch.float32, device=device)
-                    replay.push_batch(z_new, acts, rews, z_new, torch.ones_like(rews), true_labels=acts)
-                    injected_count += 1
+                sac_class_id = num_known_classes + injected_count
+                centroid_det.incremental_update(sac_class_id, flagged_z[mask])
+                
+                xb_new = torch.tensor(X_seq_test[flagged_idx][mask], dtype=torch.float32, device=device)
+                encoder.eval()
+                with torch.no_grad(): z_new = encoder(xb_new)
+                acts = torch.full((len(z_new),), sac_class_id, dtype=torch.int64, device=device)
+                rews = torch.full((len(z_new),), 1.0, dtype=torch.float32, device=device)
+                replay.push_batch(z_new, acts, rews, z_new, torch.ones_like(rews), true_labels=acts)
+                injected_count += 1
                     
             print(f"  -> Expanded ReplayBuffer with {injected_count} new isolated attack geometries.")
             new_total_classes = sac.num_actions
