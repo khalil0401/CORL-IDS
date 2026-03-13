@@ -22,6 +22,10 @@ _LOG_PATTERNS = {"bytes", "pkts", "duration", "throughput", "bits"}
 
 
 
+def is_categorical(series, threshold=15):
+    """Check if a numeric series has low cardinality (likely categorical)."""
+    return series.nunique() <= threshold
+
 def preprocess(X_train: pd.DataFrame,
                X_test: pd.DataFrame,
                categorical_cols: list = None,
@@ -36,8 +40,15 @@ def preprocess(X_train: pd.DataFrame,
     feature_dim           : int
     """
     if categorical_cols is None:
-        # Automatically detect categorical features based on dtypes
+        # Automatically detect categorical features based on dtypes AND cardinality
         categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # Heuristic: columns with very few unique values are likely categorical (e.g. Protocol, Flags)
+        for col in X_train.select_dtypes(include=['number']).columns:
+            if is_categorical(X_train[col]): # Using the new helper function
+                categorical_cols.append(col)
+        
+        categorical_cols = list(set(categorical_cols)) # Deduplicate
         print(f"[PREPROCESS] Automatically detected categorical columns: {categorical_cols}")
 
     # ------------------------------------------------------------------

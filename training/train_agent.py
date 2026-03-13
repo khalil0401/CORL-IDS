@@ -213,7 +213,12 @@ def train(cfg):
 
     # -- 4. Build modules ------------------------------------------------
     encoder  = LSTMEncoder(feature_dim, cfg["lstm_hidden"], cfg["latent_dim"]).to(device)
-    encoder_classifier = torch.nn.Linear(cfg["latent_dim"], num_classes).to(device)
+    # Upgraded to 2-layer MLP for higher projection capacity
+    encoder_classifier = torch.nn.Sequential(
+        torch.nn.Linear(cfg["latent_dim"], cfg["latent_dim"] // 2),
+        torch.nn.ReLU(),
+        torch.nn.Linear(cfg["latent_dim"] // 2, num_classes)
+    ).to(device)
 
     # Map original index probabilities to visible index probabilities purely
     # based on the original un-sampled training distribution

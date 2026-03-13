@@ -119,7 +119,12 @@ def run_pipeline(cfg):
     print("[INIT] Building Core Components...")
     try:
         encoder = LSTMEncoder(feature_dim, cfg["lstm_hidden"], cfg["latent_dim"], use_attention=cfg["use_attention"]).to(device)
-        encoder_classifier = torch.nn.Linear(cfg["latent_dim"], num_known_classes).to(device)
+        # Upgraded to 2-layer MLP for higher projection capacity over high-dim NetFlow features
+        encoder_classifier = torch.nn.Sequential(
+            torch.nn.Linear(cfg["latent_dim"], cfg["latent_dim"] // 2),
+            torch.nn.ReLU(),
+            torch.nn.Linear(cfg["latent_dim"] // 2, num_known_classes)
+        ).to(device)
 
         class_probs_vis = {orig_to_vis[orig]: p for orig, p in class_probs.items() if orig in orig_to_vis}
         
