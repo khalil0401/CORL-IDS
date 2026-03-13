@@ -122,9 +122,8 @@ def run_pipeline(cfg):
         enc_optim = torch.optim.Adam(encoder.parameters(), lr=cfg["lr"])
 
         class_probs_vis = {orig_to_vis[orig]: p for orig, p in class_probs.items() if orig in orig_to_vis}
-        class_weights = torch.zeros(num_known_classes, dtype=torch.float32, device=device)
-        for c, prob in class_probs_vis.items(): class_weights[c] = 1.0 / max(prob, 1e-8)
-        class_weights /= class_weights.sum()
+        # Explicit oversampling removed from Phase 1 to prevent double-compensation against RarityReward
+        # (The paper strictly specifies RarityReward as the mechanism, without synthetic oversampling like SMOTE or inverted weights)
 
         rarity = RarityReward(class_probs_vis, lambda_=cfg["lambda_rarity"])
         env    = IDSEnvironment(num_known_classes, rarity_reward=rarity)
@@ -173,7 +172,7 @@ def run_pipeline(cfg):
                 replay.push_batch(states_t, actions_t, rewards_t, next_states_t, dones_t, true_labels=yb_t)
 
                 if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"], class_weights=class_weights)
+                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"]) # NO class weights in Phase 1
                     sac.update(sr, ar, rr, nr, dr, ewc_loss=None)
                     if hasattr(sac, "log_alpha"):
                         with torch.no_grad(): sac.log_alpha.clamp_(min=math.log(alpha_min))

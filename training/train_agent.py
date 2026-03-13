@@ -220,11 +220,8 @@ def train(cfg):
     class_probs_vis = {orig_to_vis[orig]: p for orig, p in class_probs.items() if orig in orig_to_vis}
     
     # Pre-compute inverse probability weights for balanced replay sampling
-    # allowing SAC to see rare classes frequently without dataset mutation
-    class_weights = torch.zeros(num_classes, dtype=torch.float32, device=device)
-    for c, prob in class_probs_vis.items():
-        class_weights[c] = 1.0 / max(prob, 1e-8)
-    class_weights /= class_weights.sum()
+    # (Removed to avoid double compensation; CORL-IDS uses RarityReward directly)
+    class_weights = None
 
     rarity  = RarityReward(class_probs_vis, lambda_=cfg["lambda_rarity"])
     env     = IDSEnvironment(num_classes, rarity_reward=rarity)
@@ -294,7 +291,7 @@ def train(cfg):
 
             # d) SAC update + continuous exploration guarantee
             if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                states_s, acts_s, rews_s, next_s, dones_s = replay.sample(cfg["batch_size"], class_weights=class_weights)
+                states_s, acts_s, rews_s, next_s, dones_s = replay.sample(cfg["batch_size"])
                 info = sac.update(
                     states_s,
                     acts_s,
