@@ -177,6 +177,7 @@ def run_pipeline(cfg):
     alpha_min = cfg.get("alpha_min", 0.005)
 
     try:
+        num_batches = math.ceil(N_train / cfg["batch_size"])
         for epoch in range(1, cfg["epochs"] + 1):
             perm = np.random.permutation(N_train)
             X_shuffled, y_shuffled = X_seq_train[perm], y_seq_train[perm]
