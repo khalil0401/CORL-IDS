@@ -85,7 +85,7 @@ def run_pipeline(cfg):
 
     print(f"\n{'='*70}\n  CORL-IDS Automated Continual Learning Pipeline\n  Device: {device}\n{'='*70}\n")
 
-    csv_path  = os.path.join(BASE_DIR, "TON_IoT_Network_FULL.csv")
+    csv_path  = os.path.join(BASE_DIR, "train_test_network.csv")
     model_dir = os.path.join(BASE_DIR, "models")
     log_dir   = os.path.join(BASE_DIR, "logs")
 
