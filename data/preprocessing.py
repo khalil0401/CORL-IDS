@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 
 # Heuristic list of columns that often follow power-law distributions
 # and benefit from log-scaling (case-insensitive check).
-_LOG_PATTERNS = {"bytes", "pkts", "duration", "throughput", "bits"}
+_LOG_PATTERNS = {"bytes", "pkts", "duration", "throughput", "bits", "size", "rate"}
 
 
 # Note: categorical_cols are now detected automatically by dtype (object/category)
@@ -22,7 +22,7 @@ _LOG_PATTERNS = {"bytes", "pkts", "duration", "throughput", "bits"}
 
 
 
-def is_categorical(series, threshold=15):
+def is_categorical(series, threshold=50):
     """Check if a numeric series has low cardinality (likely categorical)."""
     return series.nunique() <= threshold
 
@@ -43,13 +43,34 @@ def preprocess(X_train: pd.DataFrame,
         # Automatically detect categorical features based on dtypes AND cardinality
         categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
         
-        # Heuristic: columns with very few unique values are likely categorical (e.g. Protocol, Flags)
+        # Heuristic: columns with moderate unique values are likely categorical (e.g. Protocol, Flags, L7_Proto)
         for col in X_train.select_dtypes(include=['number']).columns:
-            if is_categorical(X_train[col]): # Using the new helper function
+            if is_categorical(X_train[col]):
+                categorical_cols.append(col)
+            
+            # Special handling for Ports: Ports are categorical signals.
+            # We can't one-hot encode all 65k, but we can encode the top-K.
+            if "port" in col.lower():
                 categorical_cols.append(col)
         
         categorical_cols = list(set(categorical_cols)) # Deduplicate
         print(f"[PREPROCESS] Automatically detected categorical columns: {categorical_cols}")
+
+    # ------------------------------------------------------------------
+    # 0.5. Port Bining (Top-K frequencies)
+    # ------------------------------------------------------------------
+    for col in X_train.columns:
+        if "port" in col.lower():
+            # Find top 30 most frequent ports in training
+            top_ports = X_train[col].value_counts().index[:30].tolist()
+            
+            # Map values not in top-K to a placeholder string
+            X_train[col] = X_train[col].apply(lambda x: str(x) if x in top_ports else "OTHER_PORT")
+            X_test[col]  = X_test[col].apply(lambda x: str(x) if x in top_ports else "OTHER_PORT")
+            
+            # Ensure it's in categorical_cols for dummy encoding
+            if col not in categorical_cols:
+                categorical_cols.append(col)
 
     # ------------------------------------------------------------------
     # 1. Drop rows with NaN — already done at load; reset index here
