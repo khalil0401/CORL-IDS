@@ -23,17 +23,17 @@ class ReplayBuffer:
     state_dim  : int   dimensionality of state vector
     """
 
-    def __init__(self, capacity: int = 100_000, state_dim: int = 32, device: str = "cpu"):
+    def __init__(self, capacity: int = 100_000, state_shape: tuple = (32,), device: str = "cpu"):
         self.capacity  = capacity
-        self.state_dim = state_dim
+        self.state_shape = state_shape
         self.device    = torch.device(device)
 
-        self._states      = torch.zeros((capacity, state_dim), dtype=torch.float32, device=self.device)
-        self._actions     = torch.zeros((capacity,),           dtype=torch.int64,   device=self.device)
-        self._rewards     = torch.zeros((capacity,),           dtype=torch.float32, device=self.device)
-        self._next_states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=self.device)
-        self._dones       = torch.zeros((capacity,),           dtype=torch.float32, device=self.device)
-        self._true_labels = torch.zeros((capacity,),           dtype=torch.int64,   device=self.device)
+        self._states      = torch.zeros((capacity, *state_shape), dtype=torch.float32, device=self.device)
+        self._actions     = torch.zeros((capacity,),            dtype=torch.int64,   device=self.device)
+        self._rewards     = torch.zeros((capacity,),            dtype=torch.float32, device=self.device)
+        self._next_states = torch.zeros((capacity, *state_shape), dtype=torch.float32, device=self.device)
+        self._dones       = torch.zeros((capacity,),            dtype=torch.float32, device=self.device)
+        self._true_labels = torch.zeros((capacity,),            dtype=torch.int64,   device=self.device)
 
         self._ptr  = 0      # write pointer
         self._size = 0      # current fill level

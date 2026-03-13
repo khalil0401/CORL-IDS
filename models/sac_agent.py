@@ -248,60 +248,58 @@ class DiscreteSAC:
                rewards:     torch.Tensor,
                next_states: torch.Tensor,
                dones:       torch.Tensor,
-               ewc_loss:    torch.Tensor = None) -> dict:
+               ewc_loss:    torch.Tensor = None,
+               encoder:     nn.Module = None) -> dict:
         """
-        One gradient step on critics, actor, and alpha (if auto-tuning).
-        Optionally applies EWC penalty (ewc_loss) to prevent catastrophic forgetting.
-
-        All inputs are already on self.device as Tensors.
-
-        Returns dict of scalar losses for logging.
+        One gradient step on critics, actor, and alpha.
+        If encoder is provided, gradients flow back to it.
         """
+        # If encoder is provided, states/next_states are raw features and need encoding
+        if encoder is not None:
+            s_z = encoder(states)
+            n_z = encoder(next_states)
+        else:
+            s_z = states
+            n_z = next_states
+
         alpha = self.alpha
 
-        # ── Critic targets (no grad) ──────────────────────────────────
+        # ── Critic targets ──────────────────────────────────────────
         with torch.no_grad():
-            next_probs = self.actor(next_states)           # (B, A)
-            next_log_pi = (next_probs + 1e-8).log()       # (B, A)
-
-            q1_next = self.q1_target(next_states)          # (B, A)
-            q2_next = self.q2_target(next_states)          # (B, A)
-            min_q_next = torch.min(q1_next, q2_next)      # (B, A)
-
-            # V(s') = Σ_a π(a|s') [ Q(s',a) - α log π(a|s') ]
+            next_probs = self.actor(n_z)
+            next_log_pi = (next_probs + 1e-8).log()
+            q1_next = self.q1_target(n_z)
+            q2_next = self.q2_target(n_z)
+            min_q_next = torch.min(q1_next, q2_next)
             v_next = (next_probs * (min_q_next - alpha * next_log_pi)).sum(dim=-1)
+            target_q = rewards + self.gamma * (1.0 - dones) * v_next
 
-            # Bellman target
-            target_q = rewards + self.gamma * (1.0 - dones) * v_next  # (B,)
-
-        # ── Critic update ─────────────────────────────────────────────
-        q1_all = self.q1(states)                           # (B, A)
-        q2_all = self.q2(states)                           # (B, A)
-
-        # Gather Q-values for taken actions
-        q1_taken = q1_all.gather(1, actions.unsqueeze(1)).squeeze(1)  # (B,)
+        # ── Critic update ───────────────────────────────────────────
+        q1_all = self.q1(s_z)
+        q2_all = self.q2(s_z)
+        q1_taken = q1_all.gather(1, actions.unsqueeze(1)).squeeze(1)
         q2_taken = q2_all.gather(1, actions.unsqueeze(1)).squeeze(1)
-
         critic_loss = F.mse_loss(q1_taken, target_q) + F.mse_loss(q2_taken, target_q)
 
         self.q1_optim.zero_grad()
         self.q2_optim.zero_grad()
-        critic_loss.backward()
+        # If we have a shared encoder, we must retain graph for the actor update
+        critic_loss.backward(retain_graph=(encoder is not None))
         nn.utils.clip_grad_norm_(self.q1.parameters(), max_norm=5.0)
         nn.utils.clip_grad_norm_(self.q2.parameters(), max_norm=5.0)
         self.q1_optim.step()
         self.q2_optim.step()
 
-        # ── Actor update ──────────────────────────────────────────────
-        probs    = self.actor(states)                      # (B, A)
-        log_pi   = (probs + 1e-8).log()                   # (B, A)
+        # ── Actor update ────────────────────────────────────────────
+        # Re-calculate probabilities on s_z (still in graph)
+        probs  = self.actor(s_z)
+        log_pi = (probs + 1e-8).log()
 
         with torch.no_grad():
-            min_q = torch.min(self.q1(states), self.q2(states))  # (B, A)
+            # Use current critics for policy gradient
+            min_q = torch.min(self.q1(s_z), self.q2(s_z))
 
-        # Actor loss = E_a[ α log π(a|s) - Q(s,a) ]
         actor_loss = (probs * (alpha * log_pi - min_q)).sum(dim=-1).mean()
-
         if ewc_loss is not None:
             actor_loss = actor_loss + ewc_loss
 
@@ -310,7 +308,7 @@ class DiscreteSAC:
         nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=5.0)
         self.actor_optim.step()
 
-        # ── Alpha update (auto-tune) ──────────────────────────────────
+        # ── Alpha update ────────────────────────────────────────────
         alpha_loss = 0.0
         if self.auto_alpha:
             entropy = -(probs.detach() * log_pi.detach()).sum(dim=-1).mean()

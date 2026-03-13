@@ -159,7 +159,8 @@ def run_pipeline(cfg):
         rarity = RarityReward(class_probs_vis, lambda_=cfg["lambda_rarity"])
         env    = IDSEnvironment(num_known_classes, rarity_reward=rarity)
         sac    = DiscreteSAC(cfg["latent_dim"], num_known_classes, lr=cfg["lr"], gamma=cfg["gamma"], alpha=cfg["alpha_entropy"], auto_alpha=True, device=cfg["device"])
-        replay = ReplayBuffer(cfg["buffer_capacity"], cfg["latent_dim"], device=cfg["device"])
+        # Buffer stores raw sequences (seq_len, feature_dim)
+        replay = ReplayBuffer(cfg["buffer_capacity"], state_shape=(cfg["seq_len"], feature_dim), device=cfg["device"])
         
         # Test Unknown Buffer initialization
         _test_unk = UnknownBuffer(trigger_size=1, max_size=2)
@@ -177,41 +178,50 @@ def run_pipeline(cfg):
     alpha_min = cfg.get("alpha_min", 0.005)
 
     try:
-        num_batches = math.ceil(N_train / cfg["batch_size"])
+        num_batches = math.ceil((N_train - 1) / cfg["batch_size"])
         for epoch in range(1, cfg["epochs"] + 1):
-            perm = np.random.permutation(N_train)
-            X_shuffled, y_shuffled = X_seq_train[perm], y_seq_train[perm]
+            # To preserve (s, s') transitions, we shuffle indices 0 to N-2
+            perm = np.random.permutation(N_train - 1)
             epoch_rewards = []
             for b in range(num_batches):
-                s, e = b * cfg["batch_size"], min((b + 1) * cfg["batch_size"], N_train)
-                xb_t = torch.tensor(X_shuffled[s:e], dtype=torch.float32, device=device)
-                yb_t = torch.tensor(y_shuffled[s:e], dtype=torch.long, device=device)
+                idxs = perm[b * cfg["batch_size"] : (b + 1) * cfg["batch_size"]]
+                if len(idxs) == 0: continue
+                
+                # Raw sequences for s and s'
+                xb_t      = torch.tensor(X_seq_train[idxs],     dtype=torch.float32, device=device)
+                next_xb_t = torch.tensor(X_seq_train[idxs + 1], dtype=torch.float32, device=device)
+                yb_t      = torch.tensor(y_seq_train[idxs],     dtype=torch.long,    device=device)
 
                 # Phase 1: Pure SAC training (Rule 6)
-                # Representation learning is guided by rarity-aware rewards
+                # We encode s and next_s to get states for the environment/agent
                 encoder.train()
-                z_batch_t = encoder(xb_t) # s_t = z_t
-                
-                states_t = env.reset_batch(z_batch_t, yb_t)
-                actions_t, _ = sac.select_action_batch(states_t, deterministic=False)
-                next_states_t, rewards_t, dones_t, _ = env.step_batch(actions_t)
+                z_t      = encoder(xb_t)
+                next_z_t = encoder(next_xb_t).detach() # env doesn't need graph for s'
 
-                replay.push_batch(states_t, actions_t, rewards_t, next_states_t, dones_t, true_labels=yb_t)
+                states_t = env.reset_batch(z_t, yb_t)
+                actions_t, _ = sac.select_action_batch(states_t, deterministic=False)
+                # Note: env.step_batch normally computes next_states, but we already have next_z_t
+                _, rewards_t, dones_t, _ = env.step_batch(actions_t)
+
+                # Push raw sequences to buffer
+                replay.push_batch(xb_t.detach(), actions_t, rewards_t, next_xb_t.detach(), dones_t, true_labels=yb_t)
 
                 if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
+                    # Sample raw sequences from buffer
                     sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"])
                     
-                    # Backprop gradients through the encoder too
-                    sac.update(sr, ar, rr, nr, dr, ewc_loss=None)
+                    # Update SAC and Encoder jointly
+                    # we pass 'encoder' so sac.update can re-encode sr and nr with grad
+                    sac.update(sr, ar, rr, nr, dr, ewc_loss=None, encoder=encoder)
                     
-                    # Gradient step for encoder
+                    # Gradient step for encoder (sac already stepped its own optimizers)
                     enc_optim.step()
                     enc_optim.zero_grad()
                     
                 epoch_rewards.extend(rewards_t.cpu().tolist())
                 total_steps += 1
 
-            if epoch % 5 == 0 or epoch == 1:
+            if epoch % 10 == 0 or epoch == 1:
                 print(f"  Epoch {epoch:3d}/{cfg['epochs']} | reward={np.mean(epoch_rewards):+.4f}")
 
         phase1_ckpt = os.path.join(model_dir, "trained_model_phase1.pt")
@@ -394,11 +404,12 @@ def run_pipeline(cfg):
                 sac_class_id = num_known_classes + injected_count
                 
                 xb_new = torch.tensor(X_seq_test[flagged_idx][mask], dtype=torch.float32, device=device)
-                encoder.eval()
-                with torch.no_grad(): z_new = encoder(xb_new)
-                acts = torch.full((len(z_new),), sac_class_id, dtype=torch.int64, device=device)
-                rews = torch.full((len(z_new),), 1.0, dtype=torch.float32, device=device)
-                replay.push_batch(z_new, acts, rews, z_new, torch.ones_like(rews), true_labels=acts)
+                
+                # Push raw sequences for new attack types
+                # Using xb_new for both s and s' for these isolated geometries
+                acts = torch.full((len(xb_new),), sac_class_id, dtype=torch.int64, device=device)
+                rews = torch.full((len(xb_new),), 1.0, dtype=torch.float32, device=device)
+                replay.push_batch(xb_new, acts, rews, xb_new, torch.ones_like(rews), true_labels=acts)
                 injected_count += 1
                     
             print(f"  -> Expanded ReplayBuffer with {injected_count} new isolated attack geometries.")
@@ -411,7 +422,7 @@ def run_pipeline(cfg):
                 for _ in range(200):
                     sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"], class_weights=class_weights)
                     ewc_val = discovery.ewc_penalty()
-                    info = sac.update(sr, ar, rr, nr, dr, ewc_loss=ewc_val)
+                    info = sac.update(sr, ar, rr, nr, dr, ewc_loss=ewc_val, encoder=encoder)
                     cl_losses.append(info["actor_loss"])
 
                 if epoch % 5 == 0 or epoch == 1:
@@ -530,8 +541,8 @@ if __name__ == "__main__":
         "ewc_lambda": args.ewc_lambda,
         "beta_entropy": args.beta_entropy,
         "use_attention": args.use_attention,
-        "latent_dim": 48,
-        "lstm_hidden": 96,
+        "latent_dim": 32,
+        "lstm_hidden": 64,
         "buffer_capacity": 100_000,
         "update_every": 4,
         "hidden_classes": args.hidden_classes,
