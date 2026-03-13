@@ -78,5 +78,5 @@ class RarityReward:
         for cls, prob in new_probs.items():
             prob = max(prob, 1e-8)
             self.class_probs[cls] = prob
-            self._bonus_cache[cls] = math.log(1.0 + 1.0 / (prob ** 0.5))
+            self._bonus_cache[cls] = math.log(1.0 + 1.0 / prob)
         self._setup_bonus_tensor()

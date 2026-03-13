@@ -29,33 +29,23 @@ class LSTMEncoder(nn.Module):
                  input_dim: int,
                  hidden_size: int = 64,
                  latent_dim: int = 32,
-                 dropout: float = 0.0,
-                 use_attention: bool = True):
+                 dropout: float = 0.0):
         super().__init__()
-        self.hidden_size = hidden_size
+        # Rule 5: LSTM Architecture
+        # single-layer LSTM, 64 hidden units
+        self.hidden_size = 64
         self.latent_dim  = latent_dim
-        self.use_attention = use_attention
 
         self.lstm = nn.LSTM(
             input_size=input_dim,
-            hidden_size=hidden_size,
+            hidden_size=64,
             num_layers=1,
             batch_first=True,
-            dropout=dropout,
+            dropout=0.0,
         )
 
-        if self.use_attention:
-            self.attention = nn.MultiheadAttention(
-                embed_dim=hidden_size,
-                num_heads=4,
-                dropout=dropout,
-                batch_first=True
-            )
-
-        self.projection = nn.Sequential(
-            nn.Linear(hidden_size, latent_dim),
-            nn.LayerNorm(latent_dim),
-        )
+        # Rule 2: Remove extras (LayerNorm/Attention)
+        self.projection = nn.Linear(64, latent_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -65,28 +55,15 @@ class LSTMEncoder(nn.Module):
 
         Returns
         -------
-        z : Tensor (batch, latent_dim)   — latent representation z_t
+        z : Tensor (batch, latent_dim)
         """
-        # lstm_out : (batch, seq_len, hidden_size)
-        # h_n      : (num_layers, batch, hidden_size)
-        lstm_out, (h_n, _) = self.lstm(x)
+        # Take final hidden state h_T as representation
+        _, (h_n, _) = self.lstm(x)
+        h_final = h_n[-1] # (batch, 64)
 
-        if self.use_attention:
-            # Query, Key, Value are all the LSTM output sequence
-            attn_out, _ = self.attention(lstm_out, lstm_out, lstm_out)
-            # Pool the attended sequence (mean pooling across sequence length)
-            h_final = attn_out.mean(dim=1)
-        else:
-            # Take final layer hidden state → (batch, hidden_size)
-            h_final = h_n[-1]
-
-        # Project to latent space
-        z = self.projection(h_final)   # (batch, latent_dim)
+        # Linear projection to latent space
+        z = self.projection(h_final)
         return z
-
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """Alias for forward, usable in inference context."""
-        return self.forward(x)
 
 
 def build_encoder(input_dim: int,

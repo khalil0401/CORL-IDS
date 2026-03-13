@@ -64,14 +64,8 @@ class ContinualClassDiscovery:
         # Tracks next available class index
         self._next_class_id  = sac_agent.num_actions
 
-        # EWC anchor: maps param_name → anchor_tensor
-        self._ewc_anchors: Dict[str, torch.Tensor] = {}
-
-        # History of discovered cluster centroids
-        self._centroids: List[np.ndarray] = []
-
-        # Count of total discovered classes
-        self.num_discovered = 0
+        # EWC anchors: maps param_name -> (anchor_tensor, fisher_tensor)
+        self._ewc_anchors: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -130,15 +124,10 @@ class ContinualClassDiscovery:
         print(f"[DISCOVERY] Found {n_new} stable new cluster(s) "
               f"from {len(Z)} unknown samples.")
 
-        # ── 3. Compute centroids ──────────────────────────────────────
-        new_centroids = []
-        for c in stable:
-            mask = cluster_ids == c
-            centroid = Z[mask].mean(axis=0)
-            new_centroids.append(centroid)
-            self._centroids.append(centroid)
-
-        # ── 4. Save EWC anchor BEFORE expanding ───────────────────────
+        # ── 3. Post-Discovery Fisher Estimation (Rule 8, Eq 22) ────────
+        # We need a small batch of data to estimate Fisher Information
+        # Using Z and labels or sampled replay buffer
+        self._estimate_fisher(Z)
         self._save_ewc_anchors()
 
         # ── 5. Expand action spaces ───────────────────────────────────
@@ -163,49 +152,92 @@ class ContinualClassDiscovery:
         return n_new
 
     # ------------------------------------------------------------------
-    # EWC-lite: stability regularisation
+    # EWC (Eq 22-23): Fisher-weighted stability regularisation
     # ------------------------------------------------------------------
 
-    def _save_ewc_anchors(self):
-        """Snapshot current actor+critic parameters as regularisation anchors."""
-        self._ewc_anchors = {}
+    def _estimate_fisher(self, Z: np.ndarray, num_samples: int = 200):
+        """
+        Estimate Fisher Information Matrix diagonal (Rule 8, Eq 22).
+        F_i = E[ (grad log pi(a|s))^2 ]
+        """
+        self.sac_agent.actor.train()
+        fisher_dict = {}
+        
+        # Sample points from the discovery set or buffer
+        indices = np.random.choice(len(Z), min(len(Z), num_samples), replace=False)
+        states = torch.FloatTensor(Z[indices]).to(self.sac_agent.device)
+
+        # Initialize fisher with zeros
         for name, param in self.sac_agent.actor.named_parameters():
-            self._ewc_anchors[f"actor.{name}"] = param.data.clone().detach()
-        for name, param in self.sac_agent.q1.named_parameters():
-            self._ewc_anchors[f"q1.{name}"] = param.data.clone().detach()
-        for name, param in self.sac_agent.q2.named_parameters():
-            self._ewc_anchors[f"q2.{name}"] = param.data.clone().detach()
+            fisher_dict[f"actor.{name}"] = torch.zeros_like(param.data)
+        for net_name, net in [("q1", self.sac_agent.q1), ("q2", self.sac_agent.q2)]:
+            for name, param in net.named_parameters():
+                fisher_dict[f"{net_name}.{name}"] = torch.zeros_like(param.data)
+
+        # Estimate via log-likelihood gradients
+        for i in range(len(states)):
+            s = states[i:i+1]
+            # Actor Fisher
+            probs = self.sac_agent.actor(s)
+            dist = torch.distributions.Categorical(probs)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            
+            self.sac_agent.actor.zero_grad()
+            log_prob.backward(retain_graph=True)
+            for name, param in self.sac_agent.actor.named_parameters():
+                if param.grad is not None:
+                    fisher_dict[f"actor.{name}"] += (param.grad.data ** 2) / len(states)
+
+        self._fishers = fisher_dict
+
+    def _save_ewc_anchors(self):
+        """Snapshot anchors and fishers (Rule 8, Eq 23)."""
+        anchor_dict = {}
+        for name, param in self.sac_agent.actor.named_parameters():
+            key = f"actor.{name}"
+            anchor_dict[key] = (param.data.clone().detach(), self._fishers.get(key, torch.ones_like(param.data)))
+        
+        for net_name, net in [("q1", self.sac_agent.q1), ("q2", self.sac_agent.q2)]:
+            for name, param in net.named_parameters():
+                key = f"{net_name}.{name}"
+                anchor_dict[key] = (param.data.clone().detach(), self._fishers.get(key, torch.ones_like(param.data)))
+        
+        self._ewc_anchors = anchor_dict
 
     def ewc_penalty(self) -> torch.Tensor:
         """
-        Compute L2 EWC-lite penalty term.
-
-        Returns a scalar tensor to be added to the SAC losses.
-        The penalty is zero if no anchors have been saved yet.
+        Compute Fisher-weighted EWC penalty (Rule 8, Eq 23).
+        L_ewc = sum_i (lambda/2) * F_i * (theta_i - theta_A,i)^2
         """
         if not self._ewc_anchors:
             device = next(self.sac_agent.actor.parameters()).device
             return torch.tensor(0.0, device=device)
 
-        penalty = torch.tensor(0.0,
-                                device=next(self.sac_agent.actor.parameters()).device)
-        # Actor
-        for name, param in self.sac_agent.actor.named_parameters():
-            key = f"actor.{name}"
-            if key in self._ewc_anchors:
-                anchor = self._ewc_anchors[key].to(param.device)
-                n = min(param.shape[0], anchor.shape[0])
-                penalty += ((param[:n] - anchor[:n]) ** 2).sum()
-        # Critics
-        for net_name, net in [("q1", self.sac_agent.q1), ("q2", self.sac_agent.q2)]:
-            for name, param in net.named_parameters():
-                key = f"{net_name}.{name}"
-                if key in self._ewc_anchors:
-                    anchor = self._ewc_anchors[key].to(param.device)
-                    n = min(param.shape[0], anchor.shape[0])
-                    penalty += ((param[:n] - anchor[:n]) ** 2).sum()
+        penalty = torch.tensor(0.0, device=next(self.sac_agent.actor.parameters()).device)
+        
+        for key, (anchor, fisher) in self._ewc_anchors.items():
+            # Extract component and parameter name
+            parts = key.split(".")
+            comp_name = parts[0]
+            param_name = ".".join(parts[1:])
+            
+            if comp_name == "actor":
+                param = dict(self.sac_agent.actor.named_parameters())[param_name]
+            elif comp_name == "q1":
+                param = dict(self.sac_agent.q1.named_parameters())[param_name]
+            else:
+                param = dict(self.sac_agent.q2.named_parameters())[param_name]
 
-        return self.ewc_lambda * penalty
+            # Fisher weighted penalty (Eq 23)
+            # Match sizes for expanded heads (Fisher is only defined for old indices)
+            n = min(param.shape[0], anchor.shape[0])
+            anchor = anchor.to(param.device)
+            fisher = fisher.to(param.device)
+            
+            penalty += (fisher[:n] * (param[:n] - anchor[:n]) ** 2).sum()
+
+        return (self.ewc_lambda / 2.0) * penalty
 
     # ------------------------------------------------------------------
     # Visualisation helper

@@ -22,7 +22,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, balanced_accuracy_score
 
 BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
@@ -53,10 +53,9 @@ try:
     from training.ids_environment import IDSEnvironment
     from training.replay_buffer import ReplayBuffer
     from training.unknown_buffer import UnknownBuffer
-    from detection.confidence_unknown import ConfidenceUnknownDetector
-    from detection.centroid_detector import CentroidDetector
+    from detection.entropy_detector import EntropyDetector
     from detection.cluster_discovery import ContinualClassDiscovery
-    from training.train_agent import supervised_contrastive_loss, save_checkpoint
+    import pickle
 except ImportError as e:
     print(f"[FATAL ERROR] Missing required project module: {e}")
     sys.exit(1)
@@ -77,6 +76,38 @@ def save_confusion_matrix(y_true, y_pred, labels, target_names, filepath, title)
     ax.set_title(title)
     plt.tight_layout()
     fig.savefig(filepath, dpi=120)
+    plt.close(fig)
+
+def save_checkpoint(path, encoder, sac, scaler, le, cfg, meta):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    torch.save({
+        "encoder": encoder.state_dict(),
+        "sac":     sac.state_dict_full(),
+        "cfg":     cfg,
+        "meta":    meta,
+    }, path)
+    if scaler is not None:
+        with open(path.replace(".pt", "_sklearn.pkl"), "wb") as f:
+            pickle.dump({"scaler": scaler, "le": le}, f)
+    print(f"  [OK] Checkpoint saved -> {path}")
+
+def save_plots(logs, log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    if "critic_loss" in logs and logs["critic_loss"]:
+        axes[0, 0].plot(logs["critic_loss"])
+    axes[0, 0].set_title("Critic Loss")
+    if "actor_loss" in logs and logs["actor_loss"]:
+        axes[0, 1].plot(logs["actor_loss"])
+    axes[0, 1].set_title("Actor Loss")
+    if "reward" in logs and logs["reward"]:
+        axes[1, 0].plot(logs["reward"])
+    axes[1, 0].set_title("Mean Episode Reward")
+    if "alpha" in logs and logs["alpha"]:
+        axes[1, 1].plot(logs["alpha"])
+    axes[1, 1].set_title("Entropy Temperature alpha")
+    plt.tight_layout()
+    fig.savefig(os.path.join(log_dir, "training_curves.png"), dpi=120)
     plt.close(fig)
 
 def run_pipeline(cfg):
@@ -118,26 +149,16 @@ def run_pipeline(cfg):
 
     print("[INIT] Building Core Components...")
     try:
-        encoder = LSTMEncoder(feature_dim, cfg["lstm_hidden"], cfg["latent_dim"], use_attention=cfg["use_attention"]).to(device)
-        # Upgraded to 2-layer MLP for higher projection capacity over high-dim NetFlow features
-        encoder_classifier = torch.nn.Sequential(
-            torch.nn.Linear(cfg["latent_dim"], cfg["latent_dim"] // 2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(cfg["latent_dim"] // 2, num_known_classes)
-        ).to(device)
+        # Rule 5: LSTM Encoder (64 units)
+        encoder = LSTMEncoder(feature_dim, hidden_size=64, latent_dim=cfg["latent_dim"]).to(device)
 
+        # Rule 3: No supervised head or classifier
         class_probs_vis = {orig_to_vis[orig]: p for orig, p in class_probs.items() if orig in orig_to_vis}
         
-        ce_weights = torch.zeros(num_known_classes, dtype=torch.float32, device=device)
-        for c, prob in class_probs_vis.items():
-            # Power 0.7 (Intermediate Frequency) to balance minority signal vs baseline stability
-            ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 0.7)
-        ce_weights /= ce_weights.sum()
-
-        encoder_criterion = torch.nn.CrossEntropyLoss(weight=ce_weights)
-        enc_optim = torch.optim.Adam(list(encoder.parameters()) + list(encoder_classifier.parameters()), lr=cfg["lr"])
-        # Explicit oversampling removed from Phase 1 to prevent double-compensation against RarityReward
-        # (The paper strictly specifies RarityReward as the mechanism, without synthetic oversampling like SMOTE or inverted weights)
+        # Optimizer for encoder + SAC (via REINFORCE/SAC gradients)
+        # Note: In Section 4.1, the encoder is trained either via SAC or jointly. 
+        # We will train encoder parameters via SAC's backprop.
+        enc_optim = torch.optim.Adam(encoder.parameters(), lr=cfg["lr"])
 
         rarity = RarityReward(class_probs_vis, lambda_=cfg["lambda_rarity"])
         env    = IDSEnvironment(num_known_classes, rarity_reward=rarity)
@@ -164,39 +185,37 @@ def run_pipeline(cfg):
             perm = np.random.permutation(N_train)
             X_shuffled, y_shuffled = X_seq_train[perm], y_seq_train[perm]
             epoch_rewards = []
-            num_batches = math.ceil(N_train / cfg["batch_size"])
-
             for b in range(num_batches):
                 s, e = b * cfg["batch_size"], min((b + 1) * cfg["batch_size"], N_train)
                 xb_t = torch.tensor(X_shuffled[s:e], dtype=torch.float32, device=device)
                 yb_t = torch.tensor(y_shuffled[s:e], dtype=torch.long, device=device)
 
+                # Phase 1: Pure SAC training (Rule 6)
+                # Representation learning is guided by rarity-aware rewards
                 encoder.train()
-                z_batch_t = encoder(xb_t)
-                logits = encoder_classifier(z_batch_t)
-                c_loss = encoder_criterion(logits, yb_t)
-                enc_optim.zero_grad()
-                (cfg["lambda_contrast"] * c_loss).backward()
-                enc_optim.step()
-
-                encoder.eval()
-                states_t = env.reset_batch(z_batch_t.detach(), yb_t)
+                z_batch_t = encoder(xb_t) # s_t = z_t
+                
+                states_t = env.reset_batch(z_batch_t, yb_t)
                 actions_t, _ = sac.select_action_batch(states_t, deterministic=False)
                 next_states_t, rewards_t, dones_t, _ = env.step_batch(actions_t)
 
                 replay.push_batch(states_t, actions_t, rewards_t, next_states_t, dones_t, true_labels=yb_t)
 
                 if len(replay) >= cfg["batch_size"] and (total_steps % cfg["update_every"] == 0):
-                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"], class_weights=ce_weights)
+                    sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"])
+                    
+                    # Backprop gradients through the encoder too
                     sac.update(sr, ar, rr, nr, dr, ewc_loss=None)
-                    if hasattr(sac, "log_alpha"):
-                        with torch.no_grad(): sac.log_alpha.clamp_(min=math.log(alpha_min))
+                    
+                    # Gradient step for encoder
+                    enc_optim.step()
+                    enc_optim.zero_grad()
                     
                 epoch_rewards.extend(rewards_t.cpu().tolist())
                 total_steps += 1
 
             if epoch % 5 == 0 or epoch == 1:
-                print(f"  Epoch {epoch:3d}/{cfg['epochs']} | reward={np.mean(epoch_rewards):+.4f} | c_loss={c_loss.item():.4f}")
+                print(f"  Epoch {epoch:3d}/{cfg['epochs']} | reward={np.mean(epoch_rewards):+.4f}")
 
         phase1_ckpt = os.path.join(model_dir, "trained_model_phase1.pt")
         save_checkpoint(phase1_ckpt, encoder, sac, scaler, le, cfg, {"epoch": cfg["epochs"], "num_classes": num_known_classes, "feature_dim": feature_dim})
@@ -254,6 +273,7 @@ def run_pipeline(cfg):
         summary_metrics["p1_acc"] = acc_p1
         summary_metrics["p1_f1"] = f1_p1
         summary_metrics["p1_far"] = far_p1
+        summary_metrics["p1_bacc"] = balanced_accuracy_score(y_test_mapped, y_pred_mapped)
 
         # Save Phase 1 Confusion Matrix
         labels_in = list(range(num_known_classes))
@@ -278,30 +298,22 @@ def run_pipeline(cfg):
 
 
     # ===================================================================
-    # PHASE 2: Open-Set Discovery (Zero-Day Detection)
+    # PHASE 2: Open-Set Discovery (Rule 7: Pure Entropy Detection)
     # ===================================================================
-    print(f"\n{'='*70}\n  PHASE 2 - Open-Set Discovery (Zero-Day Detection)\n{'='*70}")
+    print(f"\n{'='*70}\n  PHASE 2 - Open-Set Discovery (Rule 7: Entropy-Only)\n{'='*70}")
     try:
-        conf_det = ConfidenceUnknownDetector(beta=cfg["beta_entropy"])
-        centroid_det = CentroidDetector(distance_multiplier=1.0)
+        ent_det = EntropyDetector(beta=cfg["beta_entropy"])
         
-        # Fit Adapters natively mapped against knowns
-        encoder.eval()
-        Z_knowns, c_probs = [], []
-        with torch.no_grad():
-            for b in range(math.ceil(N_train / 512)):
-                s, e = b * 512, min((b + 1) * 512, N_train)
-                xb_t = torch.tensor(X_seq_train[s:e], dtype=torch.float32, device=device)
-                z_k = encoder(xb_t)
-                _, pb = sac.select_action_batch(z_k, deterministic=True)
-                Z_knowns.append(z_k.cpu().numpy())
-                c_probs.append(pb.cpu().numpy())
-        conf_det.fit(np.concatenate(c_probs, axis=0))
-        centroid_det.fit(np.concatenate(Z_knowns, axis=0), y_seq_train, num_classes=num_known_classes)
-
-        conf_unknown     = conf_det.predict_batch(all_probs)
-        centroid_unknown = centroid_det.predict_batch(all_z)
-        unknown_mask     = conf_unknown | centroid_unknown
+        # Rule 7: Shannon Entropy Equation 11 and Threshold Eq 13-14
+        num_unknown_flagged = 0
+        unknown_mask = np.zeros(len(y_seq_test), dtype=bool)
+        
+        # Calculate entropy on test set
+        for i in range(len(all_probs)):
+            H = ent_det.entropy_from_probs(all_probs[i])
+            ent_det.update(H)
+            if ent_det.is_unknown(H):
+                unknown_mask[i] = True
 
         num_unknown_flagged = unknown_mask.sum()
         is_hidden_sample = np.isin(y_seq_test, hidden_ids)
@@ -319,17 +331,17 @@ def run_pipeline(cfg):
         summary_metrics["p2_hid"] = hidden_detected
         summary_metrics["p2_uadr"] = uadr
 
-        # Save Confidence Histogram
+        # Save Entropy Histogram
         fig, ax = plt.subplots(figsize=(8, 4))
-        test_conf = np.max(all_probs, axis=-1)
-        ax.hist(test_conf[~unknown_mask], bins=50, alpha=0.6, label="Classified as Known", color="steelblue")
-        ax.hist(test_conf[unknown_mask], bins=50, alpha=0.6, label="Flagged as Unknown", color="orange")
-        ax.axvline(conf_det.threshold, color="red", linestyle="--", label=f"Threshold {conf_det.threshold:.2f}")
+        test_H = np.array([ent_det.entropy_from_probs(p) for p in all_probs])
+        ax.hist(test_H[~unknown_mask], bins=50, alpha=0.6, label="Known Samples", color="steelblue")
+        ax.hist(test_H[unknown_mask], bins=50, alpha=0.6, label="Unknown Samples", color="orange")
+        ax.axvline(ent_det.threshold, color="red", linestyle="--", label=f"Tau={ent_det.threshold:.2f}")
         ax.legend()
-        ax.set_title("Phase 2 - Policy Confidence Distribution")
-        fig.savefig(os.path.join(log_dir, "confidence_hist_phase2.png"), dpi=120)
+        ax.set_title("Phase 2 - Shannon Entropy Distribution")
+        fig.savefig(os.path.join(log_dir, "entropy_hist_phase2.png"), dpi=120)
         plt.close(fig)
-        print(f"  -> Saved logs/confidence_hist_phase2.png")
+        print(f"  -> Saved logs/entropy_hist_phase2.png")
 
         # Phase 2 Model Checkpoint
         phase2_ckpt = os.path.join(model_dir, "trained_model_phase2.pt")
@@ -383,7 +395,6 @@ def run_pipeline(cfg):
             for unique_c in stable_clusters:
                 mask = pseudo_labels == unique_c
                 sac_class_id = num_known_classes + injected_count
-                centroid_det.incremental_update(sac_class_id, flagged_z[mask])
                 
                 xb_new = torch.tensor(X_seq_test[flagged_idx][mask], dtype=torch.float32, device=device)
                 encoder.eval()
@@ -435,6 +446,11 @@ def run_pipeline(cfg):
             summary_metrics["p3_old_acc"] = p3_old_acc
             summary_metrics["p3_new_acc"] = p3_new_acc
             summary_metrics["p3_udr"] = p3_new_acc # Identification as new classes is effectively the new UDR
+            
+            # Rule 10: CFM Calculation (Eq 26)
+            # F = 1/K * sum(max(R_i,t) - R_i,T)
+            # Since we have 2 phases with common metrics (P1 and P3):
+            summary_metrics["cfm"] = max(0, acc_p1 - p3_old_acc)
 
             # Construct Confusion Matrices for Phase 3 (Old vs Discovered bounds)
             test_labels_p3 = np.array([orig_to_vis.get(lbl, num_known_classes) for lbl in y_seq_test])
@@ -480,6 +496,8 @@ def run_pipeline(cfg):
     print(f"| Phase3   | Old class accuracy        | {summary_metrics.get('p3_old_acc', 0)*100:5.2f}%         |")
     print(f"| Phase3   | New class accuracy        | {summary_metrics.get('p3_new_acc', 0)*100:5.2f}%         |")
     print(f"| Phase3   | Unknown detection rate    | {summary_metrics.get('p3_udr', 0)*100:5.2f}%         |")
+    print(f"| Final    | Balanced Accuracy         | {summary_metrics.get('p1_bacc', 0)*100:5.2f}%         |")
+    print(f"| Final    | Forgetting Measure (CFM)  | {summary_metrics.get('cfm', 0)*100:5.2f}%         |")
     print(f"{'='*70}")
     print("\nCORL-IDS Pipeline Completed Successfully")
 
