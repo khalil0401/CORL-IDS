@@ -176,7 +176,7 @@ def evaluate(ckpt_path, device_str="cpu",
     # -- Load test data --------------------------------------------------
     # IMPORTANT: pass same hidden_classes so preprocessing (scaler, one-hot)
     # matches what was used during training (same feature_dim).
-    csv_path = os.path.join(BASE_DIR, "train_test_network.csv")
+    csv_path = os.path.join(BASE_DIR, "TON_IoT_Network_FULL.csv")
     X_train_raw, X_test_raw, y_train, y_test, le, _, _, _ = load_dataset(
         csv_path,
         seed=cfg.get("seed", 42),

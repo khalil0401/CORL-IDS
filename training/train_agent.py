@@ -175,7 +175,7 @@ def train(cfg):
 
     # -- Paths -----------------------------------------------------------
     base_dir  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    csv_path  = os.path.join(base_dir, "train_test_network.csv")
+    csv_path  = os.path.join(base_dir, "TON_IoT_Network_FULL.csv")
     model_dir = os.path.join(base_dir, "models")
     log_dir   = os.path.join(base_dir, "logs")
     ckpt_path = os.path.join(model_dir, "trained_model.pt")

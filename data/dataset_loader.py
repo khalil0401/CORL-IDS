@@ -70,6 +70,10 @@ def load_dataset(csv_path: str,
     df = df.dropna(subset=[LABEL_COL])
 
     # ------------------------------------------------------------------
+    # Clean invalid labels (0, 1) from the raw TON_IoT_FULL
+    # ------------------------------------------------------------------
+    invalid_labels = {0, 1, "0", "1", " 0 ", " 1 ", "0.0", "1.0"}
+    df = df[~df[LABEL_COL].isin(invalid_labels)]
     # Drop non-feature columns
     # ------------------------------------------------------------------
     drop = _DROP_COLS.union({"label"})
@@ -137,6 +141,6 @@ def load_dataset(csv_path: str,
 
 if __name__ == "__main__":
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "train_test_network.csv")
+    path = os.path.join(base, "TON_IoT_Network_FULL.csv")
     # Example: hide 'ransomware' and 'ddos' from training
     load_dataset(path, hidden_classes=["ransomware", "ddos"])

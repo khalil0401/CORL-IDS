@@ -31,7 +31,7 @@ pip install -r requirements.txt
 
 ```text
 CORL-IDS/
-├── train_test_network.csv          # Main dataset structure required for the pipeline
+├── TON_IoT_Network_FULL.csv          # Main dataset structure required for the pipeline
 ├── CORL-IDS_Kaggle.ipynb           # Kaggle Notebook wrapper for seamless execution
 ├── requirements.txt                # Python dependencies
 ├── data/
@@ -66,7 +66,7 @@ CORL-IDS/
 ## 🧠 Modules Description
 
 ### `data/`
-- **`dataset_loader.py`**: Reads `train_test_network.csv`, applies `LabelEncoder`, and dynamically extracts `hidden_classes` from the training set so they act as genuine zero-day attacks during testing.
+- **`dataset_loader.py`**: Reads `TON_IoT_Network_FULL.csv`, applies `LabelEncoder`, and dynamically extracts `hidden_classes` from the training set so they act as genuine zero-day attacks during testing.
 - **`preprocessing.py`**: Applies numerical normalisation using `StandardScaler`.
 - **`sequence_builder.py`**: Iterates through the raw time-series matrices to return sliding-window sequences necessary for the LSTM context extraction.
 
