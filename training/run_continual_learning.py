@@ -130,7 +130,8 @@ def run_pipeline(cfg):
         
         ce_weights = torch.zeros(num_known_classes, dtype=torch.float32, device=device)
         for c, prob in class_probs_vis.items():
-            ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 0.5)
+            # Power 1.0 (Inverse Frequency) for much stronger minority class penalty
+            ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 1.0)
         ce_weights /= ce_weights.sum()
 
         encoder_criterion = torch.nn.CrossEntropyLoss(weight=ce_weights)
@@ -399,8 +400,12 @@ def run_pipeline(cfg):
             class_weights[num_known_classes:] = 5.0
             class_weights /= class_weights.sum()
 
-            print(f"  -> Fine-Tuning online for {cfg['continual_epochs']} epochs with EWC parameters locked...")
-            for epoch in range(1, cfg["continual_epochs"] + 1):
+            print(f"  -> Fine-Tuning online for 50 epochs with EWC parameters locked...")
+            # Increase entropy during fine-tuning to explore the new action space
+            original_alpha = sac.alpha
+            sac.alpha = 0.5 
+            
+            for epoch in range(1, 51):
                 cl_losses = []
                 for _ in range(200):
                     sr, ar, rr, nr, dr = replay.sample(cfg["batch_size"], class_weights=class_weights)
@@ -409,7 +414,9 @@ def run_pipeline(cfg):
                     cl_losses.append(info["actor_loss"])
 
                 if epoch % 5 == 0 or epoch == 1:
-                    print(f"    Online Epoch {epoch:2d}/{cfg['continual_epochs']} | actor_loss={np.mean(cl_losses):.4f} | EWC_penalty={ewc_val.item():.4f}")
+                    print(f"    Online Epoch {epoch:2d}/50 | actor_loss={np.mean(cl_losses):.4f} | EWC_penalty={ewc_val.item():.4f}")
+
+            sac.alpha = original_alpha # Restore original exploration profile after discovery
 
             # Phase 3 Eval
             print("\n  -> Re-Evaluating over Test Set to verify old knowledge preservation + new attack identification...")

@@ -15,29 +15,26 @@ def build_sequences(X: np.ndarray,
                     y: np.ndarray,
                     seq_len: int = 10) -> tuple:
     """
-    Parameters
-    ----------
-    X        : np.ndarray (N, feature_dim)  float32
-    y        : np.ndarray (N,)              int
-    seq_len  : int  sliding window length
-
     Returns
     -------
-    X_seq : np.ndarray (M, seq_len, feature_dim)
+    X_seq : np.ndarray (M, seq_len, feature_dim)  (AS A VIEW)
     y_seq : np.ndarray (M,)
-    where M = N - seq_len + 1
     """
     N, feat_dim = X.shape
     if N < seq_len:
         raise ValueError(f"Not enough samples ({N}) for seq_len={seq_len}")
 
     M = N - seq_len + 1
-    # Efficient strided view
+    
+    # We use sliding_window_view to get a (M, 1, seq_len, feat_dim) view
+    # then squeeze/reshape to get (M, seq_len, feat_dim)
+    # CRITICAL: We DO NOT call .copy() or .astype() here to keep it as a view.
     X_seq = np.lib.stride_tricks.sliding_window_view(X, (seq_len, feat_dim))
-    X_seq = X_seq.reshape(M, seq_len, feat_dim)          # (M, seq_len, feat_dim)
-    y_seq = y[seq_len - 1:]                               # (M,)
+    X_seq = X_seq.reshape(M, seq_len, feat_dim)
+    
+    y_seq = y[seq_len - 1:]
 
-    return X_seq.astype(np.float32), y_seq
+    return X_seq, y_seq
 
 
 def build_sequences_batched(X: np.ndarray,
