@@ -38,21 +38,11 @@ def preprocess(X_train: pd.DataFrame,
     feature_dim           : int
     """
     if categorical_cols is None:
-        # Automatically detect categorical features based on dtypes AND cardinality
+        # Strictly follow Rule 12 & Section 5.2: 
+        # Only treat symbolic object/category types as strictly categorical.
+        # Everything else is treated as numerical (including ports) for Min-Max normalization.
         categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
-        
-        # Heuristic: columns with moderate unique values are likely categorical (e.g. Protocol, Flags, L7_Proto)
-        for col in X_train.select_dtypes(include=['number']).columns:
-            if is_categorical(X_train[col]):
-                categorical_cols.append(col)
-            
-            # Special handling for Ports: Ports are categorical signals.
-            # We can't one-hot encode all 65k, but we can encode the top-K.
-            if "port" in col.lower():
-                categorical_cols.append(col)
-        
-        categorical_cols = list(set(categorical_cols)) # Deduplicate
-        print(f"[PREPROCESS] Automatically detected categorical columns: {categorical_cols}")
+        print(f"[PREPROCESS] Categorical columns (One-Hot): {categorical_cols}")
 
     # ------------------------------------------------------------------
     # 0.2. Strict Data Cleaning (Rule 11)
