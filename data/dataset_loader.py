@@ -19,13 +19,14 @@ from sklearn.preprocessing import LabelEncoder
 from typing import List, Optional
 
 
-# Columns that should never be treated as features (IPs, raw strings)
+# Columns that should never be treated as features (IPs, raw strings, IDs)
 _DROP_COLS = {"src_ip", "dst_ip", "dns_query", "ssl_subject", "ssl_issuer",
               "http_uri", "http_user_agent", "http_orig_mime_types",
-              "http_resp_mime_types", "weird_name", "weird_addl"}
+              "http_resp_mime_types", "weird_name", "weird_addl",
+              "IPV4_SRC_ADDR", "IPV4_DST_ADDR", "Label"}
 
-# The target label column (attack type name)
-LABEL_COL = "type"
+# Candidate target label columns
+_CANDIDATE_LABELS = ["type", "Attack"]
 
 
 def load_dataset(csv_path: str,
@@ -57,26 +58,48 @@ def load_dataset(csv_path: str,
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Dataset not found: {csv_path}")
 
-    df = pd.read_csv(csv_path, low_memory=False)
-    print(f"Loaded {len(df):,} rows x {df.shape[1]} columns from {csv_path}")
+    file_size_gb = os.path.getsize(csv_path) / (1024 ** 3)
+    invalid_labels = {0, 1, "0", "1", " 0 ", " 1 ", "0.0", "1.0", "-"}
+
+    if file_size_gb > 1.0:
+        print(f"[LOADER] Dataset is {file_size_gb:.2f} GB. Using chunked stratified downsampling to prevent OOM...")
+        chunks = []
+        for chunk in pd.read_csv(csv_path, chunksize=1000000, low_memory=False):
+            # Detect label col recursively
+            l_col = next((c for c in _CANDIDATE_LABELS if c in chunk.columns), None)
+            if l_col:
+                chunk = chunk.dropna(subset=[l_col])
+                chunk = chunk[~chunk[l_col].astype(str).isin(invalid_labels)]
+                
+                # Downsample majorities but entirely preserve minorities
+                sampled = chunk.groupby(l_col, group_keys=False).apply(
+                    lambda x: x.sample(n=min(len(x), 20000), random_state=42)
+                )
+                chunks.append(sampled)
+            else:
+                # Failsafe
+                chunks.append(chunk.sample(frac=0.1, random_state=42))
+
+        df = pd.concat(chunks, ignore_index=True)
+        print(f"[LOADER] Extracted {len(df):,} robust samples.")
+    else:
+        df = pd.read_csv(csv_path, low_memory=False)
+        print(f"[LOADER] Loaded {len(df):,} rows x {df.shape[1]} columns.")
 
     # ------------------------------------------------------------------
-    # Detect label column
+    # Detect final label column
     # ------------------------------------------------------------------
-    if LABEL_COL not in df.columns:
-        raise KeyError(f"Expected label column '{LABEL_COL}' not found. "
-                       f"Available: {list(df.columns)}")
+    LABEL_COL = next((c for c in _CANDIDATE_LABELS if c in df.columns), None)
+    if not LABEL_COL:
+        raise KeyError(f"Expected label column (one of {_CANDIDATE_LABELS}) not found. Available: {list(df.columns)}")
 
     df = df.dropna(subset=[LABEL_COL])
+    df = df[~df[LABEL_COL].astype(str).isin(invalid_labels)]
 
     # ------------------------------------------------------------------
-    # Clean invalid labels (0, 1) from the raw TON_IoT_FULL
-    # ------------------------------------------------------------------
-    invalid_labels = {0, 1, "0", "1", " 0 ", " 1 ", "0.0", "1.0"}
-    df = df[~df[LABEL_COL].isin(invalid_labels)]
     # Drop non-feature columns
     # ------------------------------------------------------------------
-    drop = _DROP_COLS.union({"label"})
+    drop = _DROP_COLS.union({"label", "Label"})
     feature_cols = [c for c in df.columns if c not in drop and c != LABEL_COL]
 
     # ------------------------------------------------------------------
