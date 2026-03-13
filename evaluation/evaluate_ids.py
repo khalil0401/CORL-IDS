@@ -198,8 +198,8 @@ def evaluate(ckpt_path, device_str="cpu",
         [orig_to_vis.get(int(lbl), -1) for lbl in y_seq], dtype=np.int64
     )
 
-    # Prime Confidence detector (Highly aggressive)
-    conf_det = ConfidenceUnknownDetector(threshold=0.98)
+    # Prepare Confidence detector (Will be fitted dynamically over training set)
+    conf_det = ConfidenceUnknownDetector(beta=beta_entropy)
 
     # -- Fit Centroid (Mahalanobis) Detector from TRAINING data -----------------------
     print("\nFitting Centroid/Mahalanobis detector on training data ...")
@@ -222,12 +222,21 @@ def evaluate(ckpt_path, device_str="cpu",
     encoder.eval()
     with torch.no_grad():
         Z_train_list = []
+        c_probs = []
         bs = 512
         for si in range(0, len(X_seq_tr), bs):
             xb = torch.tensor(X_seq_tr[si:si+bs], dtype=torch.float32, device=device)
+            z_batch_t = encoder(xb)
             Z_train_list.append(encoder(xb).cpu().numpy())
+            
+            # Predict known probabilities to fit adaptive confidence bounds
+            _, pb = sac.select_action_batch(z_batch_t, deterministic=True)
+            c_probs.append(pb.cpu().numpy())
+            
     Z_train_full = np.concatenate(Z_train_list, axis=0)
+    c_probs_full = np.concatenate(c_probs, axis=0)
 
+    conf_det.fit(c_probs_full)
     centroid_det = CentroidDetector(distance_multiplier=1.0)
     centroid_det.fit(Z_train_full, y_seq_tr_vis, num_classes=num_known)
 

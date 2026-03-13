@@ -245,9 +245,11 @@ class DiscreteSAC:
                actions:     torch.Tensor,
                rewards:     torch.Tensor,
                next_states: torch.Tensor,
-               dones:       torch.Tensor) -> dict:
+               dones:       torch.Tensor,
+               ewc_loss:    torch.Tensor = None) -> dict:
         """
         One gradient step on critics, actor, and alpha (if auto-tuning).
+        Optionally applies EWC penalty (ewc_loss) to prevent catastrophic forgetting.
 
         All inputs are already on self.device as Tensors.
 
@@ -297,6 +299,9 @@ class DiscreteSAC:
 
         # Actor loss = E_a[ α log π(a|s) - Q(s,a) ]
         actor_loss = (probs * (alpha * log_pi - min_q)).sum(dim=-1).mean()
+
+        if ewc_loss is not None:
+            actor_loss = actor_loss + ewc_loss
 
         self.actor_optim.zero_grad()
         actor_loss.backward()

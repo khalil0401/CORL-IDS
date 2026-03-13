@@ -55,6 +55,38 @@ class CentroidDetector:
             mean_dist = np.mean(dists)
             std_dist = np.std(dists)
             self.thresholds[cls] = mean_dist + self.distance_multiplier * std_dist
+
+    def incremental_update(self, cls: int, z_cls: np.ndarray):
+        """
+        Dynamically merges a newly discovered class into the Mahalanobis centroid detector. 
+        """
+        if cls in self.centroids:
+            return  # Already exists, avoid overwriting
+        
+        mu = np.mean(z_cls, axis=0)
+        self.centroids[cls] = mu
+
+        # Try computing covariance for Mahalanobis
+        if len(z_cls) > z_cls.shape[1]: 
+            cov = np.cov(z_cls, rowvar=False)
+            cov += np.eye(cov.shape[0]) * 1e-6
+            try:
+                inv_cov = np.linalg.inv(cov)
+                self.use_mahalanobis[cls] = True
+                self.covariances[cls] = cov
+                self.inv_covariances[cls] = inv_cov
+                dists = np.array([mahalanobis(z, mu, inv_cov) for z in z_cls])
+            except np.linalg.LinAlgError:
+                self.use_mahalanobis[cls] = False
+                dists = np.linalg.norm(z_cls - mu, axis=1)
+        else:
+            self.use_mahalanobis[cls] = False
+            dists = np.linalg.norm(z_cls - mu, axis=1)
+
+        mean_dist = np.mean(dists)
+        std_dist = np.std(dists)
+        self.thresholds[cls] = mean_dist + self.distance_multiplier * std_dist
+        print(f"    -> [CENTROID] Newly discovered Action {cls} dynamically merged. (Threshold: {self.thresholds[cls]:.2f})")
             
     def predict_batch(self, z_batch: np.ndarray) -> np.ndarray:
         """

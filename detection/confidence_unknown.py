@@ -8,8 +8,24 @@ class ConfidenceUnknownDetector:
     is flagged as anomalous (UNKNOWN).
     """
 
-    def __init__(self, threshold: float = 0.60):
-        self.threshold = threshold
+    def __init__(self, beta: float = 1.0, default_threshold: float = 0.90):
+        self.beta = beta
+        self.threshold = default_threshold
+        self.fitted = False
+
+    def fit(self, probs: np.ndarray):
+        """
+        Dynamically calculate the threshold based on the confidence distribution
+        of the known training dataset: threshold = mean - (beta * std).
+        """
+        confidences = np.max(probs, axis=-1)
+        mean_conf   = np.mean(confidences)
+        std_conf    = np.std(confidences)
+
+        # Ensure the adaptive threshold doesn't exceed 1.0 or drop unreasonably low
+        self.threshold = float(np.clip(mean_conf - (self.beta * std_conf), 0.50, 0.99))
+        self.fitted    = True
+        print(f"    -> [CONFIDENCE] Adaptive Threshold Fitted: {self.threshold:.3f} (mean={mean_conf:.3f}, std={std_conf:.3f})")
 
     def predict_batch(self, probs: np.ndarray) -> np.ndarray:
         """
