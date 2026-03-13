@@ -37,10 +37,6 @@ for fld in REQUIRED_FOLDERS:
         print(f"[FATAL ERROR] Required folder missing: {path}")
         sys.exit(1)
 
-# We are the run_continual_learning.py file, evaluate_ids.py is in evaluation/
-if not os.path.isfile(os.path.join(BASE_DIR, "evaluation", "evaluate_ids.py")):
-    print(f"[FATAL ERROR] evaluate_ids.py missing in evaluation/ folder.")
-    sys.exit(1)
 
 # Import necessary core modules inside a try-catch to strictly verify their presence
 try:
