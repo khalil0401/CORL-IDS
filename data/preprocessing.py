@@ -13,15 +13,9 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 
-# Columns with object dtype that benefit from one-hot encoding
-_CATEGORICAL_COLS = [
-    "proto", "service", "conn_state",
-    "dns_qclass", "dns_qtype", "dns_rcode",
-    "dns_AA", "dns_RD", "dns_RA", "dns_rejected",
-    "ssl_version", "ssl_cipher", "ssl_resumed", "ssl_established",
-    "http_method", "http_version", "weird_notice",
-    "http_status_code",           # sometimes stored as string
-]
+# Note: categorical_cols are now detected automatically by dtype (object/category)
+# but can still be overridden manually if necessary.
+
 
 
 def preprocess(X_train: pd.DataFrame,
@@ -38,7 +32,9 @@ def preprocess(X_train: pd.DataFrame,
     feature_dim           : int
     """
     if categorical_cols is None:
-        categorical_cols = [c for c in _CATEGORICAL_COLS if c in X_train.columns]
+        # Automatically detect categorical features based on dtypes
+        categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+        print(f"[PREPROCESS] Automatically detected categorical columns: {categorical_cols}")
 
     # ------------------------------------------------------------------
     # 1. Drop rows with NaN — already done at load; reset index here
