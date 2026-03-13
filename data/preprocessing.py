@@ -57,18 +57,35 @@ def preprocess(X_train: pd.DataFrame,
         print(f"[PREPROCESS] Automatically detected categorical columns: {categorical_cols}")
 
     # ------------------------------------------------------------------
-    # 0.5. Port Bining (Top-K frequencies)
+    # 0.2. Derived Traffic Intensity Features (Helpful for MITM/Password)
     # ------------------------------------------------------------------
-    for col in X_train.columns:
+    # Heuristic: Byte density and packet rate are strong signals for many attacks
+    pairs = [
+        ('IN_BYTES',  'IN_PKTS',  'BYTES_PER_PKT_IN'),
+        ('OUT_BYTES', 'OUT_PKTS', 'BYTES_PER_PKT_OUT'),
+    ]
+    for b_col, p_col, new_col in pairs:
+        if b_col in X_train.columns and p_col in X_train.columns:
+            X_train[new_col] = X_train[b_col] / (X_train[p_col] + 1)
+            X_test[new_col]  = X_test[b_col]  / (X_test[p_col]  + 1)
+
+    # ------------------------------------------------------------------
+    # 0.5. Hybrid Port Encoding (Numerical + Categorical)
+    # ------------------------------------------------------------------
+    for col in list(X_train.columns):
         if "port" in col.lower():
-            # Find top 30 most frequent ports in training
-            top_ports = X_train[col].value_counts().index[:30].tolist()
+            # 1. Preserve Numerical Signal (for Password/Brute-force)
+            # Create a dedicated numeric copy that will be scaled normally
+            num_port_col = f"{col}_NUM"
+            X_train[num_port_col] = pd.to_numeric(X_train[col], errors='coerce').fillna(0)
+            X_test[num_port_col]  = pd.to_numeric(X_test[col],  errors='coerce').fillna(0)
+
+            # 2. Capture Categorical Identity (for Scanning/Injection)
+            # Increase bining to Top 100 to catch more specific attack targets
+            top_ports = X_train[col].value_counts().index[:100].tolist()
+            X_train[col] = X_train[col].apply(lambda x: str(x) if x in top_ports else "OTHER")
+            X_test[col]  = X_test[col].apply(lambda x: str(x) if x in top_ports else "OTHER")
             
-            # Map values not in top-K to a placeholder string
-            X_train[col] = X_train[col].apply(lambda x: str(x) if x in top_ports else "OTHER_PORT")
-            X_test[col]  = X_test[col].apply(lambda x: str(x) if x in top_ports else "OTHER_PORT")
-            
-            # Ensure it's in categorical_cols for dummy encoding
             if col not in categorical_cols:
                 categorical_cols.append(col)
 
