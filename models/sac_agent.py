@@ -87,7 +87,8 @@ class DiscreteActor(nn.Module):
         if new_num_actions <= old_num:
             return
         old_linear = list(self.net.children())[-1]
-        new_linear  = nn.Linear(old_linear.in_features, new_num_actions)
+        device = old_linear.weight.device
+        new_linear  = nn.Linear(old_linear.in_features, new_num_actions).to(device)
         # Copy existing weights; init new rows with small random values
         with torch.no_grad():
             new_linear.weight[:old_num] = old_linear.weight
@@ -121,7 +122,8 @@ class DiscreteCritic(nn.Module):
         if new_num_actions <= old_num:
             return
         old_linear = list(self.net.children())[-1]
-        new_linear  = nn.Linear(old_linear.in_features, new_num_actions)
+        device = old_linear.weight.device
+        new_linear  = nn.Linear(old_linear.in_features, new_num_actions).to(device)
         with torch.no_grad():
             new_linear.weight[:old_num] = old_linear.weight
             new_linear.bias[:old_num]   = old_linear.bias
@@ -348,10 +350,15 @@ class DiscreteSAC:
             return
 
         self.actor.expand(new_num_actions)
+        self.actor.to(self.device)
         self.q1.expand(new_num_actions)
+        self.q1.to(self.device)
         self.q2.expand(new_num_actions)
+        self.q2.to(self.device)
         self.q1_target.expand(new_num_actions)
+        self.q1_target.to(self.device)
         self.q2_target.expand(new_num_actions)
+        self.q2_target.to(self.device)
 
         # Sync targets to current nets
         self.q1_target.load_state_dict(self.q1.state_dict())
