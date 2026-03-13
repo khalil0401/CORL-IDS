@@ -64,7 +64,7 @@ def load_dataset(csv_path: str,
     if file_size_gb > 1.0:
         print(f"[LOADER] Dataset is {file_size_gb:.2f} GB. Using chunked stratified downsampling to prevent OOM...")
         chunks = []
-        for chunk in pd.read_csv(csv_path, chunksize=1000000, low_memory=False):
+        for chunk in pd.read_csv(csv_path, chunksize=1000000, low_memory=False, on_bad_lines='skip'):
             # Detect label col recursively
             l_col = next((c for c in _CANDIDATE_LABELS if c in chunk.columns), None)
             if l_col:
@@ -83,7 +83,7 @@ def load_dataset(csv_path: str,
         df = pd.concat(chunks, ignore_index=True)
         print(f"[LOADER] Extracted {len(df):,} robust samples.")
     else:
-        df = pd.read_csv(csv_path, low_memory=False)
+        df = pd.read_csv(csv_path, low_memory=False, on_bad_lines='skip')
         print(f"[LOADER] Loaded {len(df):,} rows x {df.shape[1]} columns.")
 
     # ------------------------------------------------------------------
