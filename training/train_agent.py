@@ -230,7 +230,8 @@ def train(cfg):
     
     ce_weights = torch.zeros(num_classes, dtype=torch.float32, device=device)
     for c, prob in class_probs_vis.items():
-        ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 1.0)
+        # Power 0.7 to balance minority signal vs baseline stability
+        ce_weights[c] = 1.0 / (max(prob, 1e-8) ** 0.7)
     ce_weights /= ce_weights.sum()
 
     encoder_criterion = torch.nn.CrossEntropyLoss(weight=ce_weights)
