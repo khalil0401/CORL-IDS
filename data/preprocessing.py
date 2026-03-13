@@ -44,12 +44,8 @@ def preprocess(X_train: pd.DataFrame,
         categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
         print(f"[PREPROCESS] Categorical columns (One-Hot): {categorical_cols}")
 
-    # ------------------------------------------------------------------
-    # 0.2. Strict Data Cleaning (Rule 11)
-    # ------------------------------------------------------------------
-    # Remove duplicates and handle missing values naturally
-    X_train = X_train.drop_duplicates()
-    # Note: X_test is handled separately by the caller or kept as is
+    # Note: 0.2. Strict Data Cleaning (Rule 11) is now handled in load_dataset
+    # to ensure X and y stay in sync.
 
     # ------------------------------------------------------------------
     # 1. Drop rows with NaN — already done at load; reset index here

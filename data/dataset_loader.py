@@ -97,6 +97,16 @@ def load_dataset(csv_path: str,
     df = df[~df[LABEL_COL].astype(str).isin(invalid_labels)]
 
     # ------------------------------------------------------------------
+    # 0.2. Strict Data Cleaning (Rule 11)
+    # ------------------------------------------------------------------
+    # Remove duplicates before any encoding or splitting to keep X, y in sync
+    before_count = len(df)
+    df = df.drop_duplicates().reset_index(drop=True)
+    after_count = len(df)
+    if before_count != after_count:
+        print(f"[LOADER] Removed {before_count - after_count:,} duplicate rows.")
+
+    # ------------------------------------------------------------------
     # Drop non-feature columns
     # ------------------------------------------------------------------
     drop = _DROP_COLS.union({"label", "Label"})
@@ -164,6 +174,6 @@ def load_dataset(csv_path: str,
 
 if __name__ == "__main__":
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "TON_IoT_Network_FULL.csv")
+    path = os.path.join(base, "train_test_network.csv")
     # Example: hide 'ransomware' and 'ddos' from training
     load_dataset(path, hidden_classes=["ransomware", "ddos"])
